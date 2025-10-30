@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>即時監控 - 吸菸監控系統</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            background: #f8f9fa;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+        
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: 250px;
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 0;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        }
+        
+        .sidebar .logo {
+            text-align: center;
+            padding: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .sidebar .logo i {
+            font-size: 40px;
+        }
+        
+        .sidebar .nav-link {
+            color: rgba(255,255,255,0.8);
+            padding: 15px 30px;
+            transition: all 0.3s;
+        }
+        
+        .sidebar .nav-link:hover,
+        .sidebar .nav-link.active {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+        
+        .sidebar .nav-link i {
+            margin-right: 10px;
+            font-size: 18px;
+        }
+        
+        .main-content {
+            margin-left: 250px;
+            padding: 30px;
+        }
+        
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+            border: none;
+        }
+        
+        .video-container {
+            position: relative;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .video-placeholder {
+            text-align: center;
+            color: #6c757d;
+        }
+        
+        .video-placeholder i {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+        
+        #displayCanvas {
+            width: 100%;
+            height: auto;
+            display: none;
+        }
+        
+        .status-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .status-connecting {
+            background: #ffc107;
+            color: #000;
+        }
+        
+        .status-online {
+            background: #28a745;
+            color: white;
+        }
+        
+        .status-offline {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .detection-alert {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 30px;
+            background: rgba(220, 53, 69, 0.95);
+            color: white;
+            border-radius: 10px;
+            font-weight: bold;
+            display: none;
+            animation: pulse 1s infinite;
+            z-index: 10;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .control-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-top: 20px;
+        }
+        
+        .camera-select-card {
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+        
+        .camera-select-card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+        }
+        
+        .camera-select-card.selected {
+            border-color: #667eea;
+            background: #f0f3ff;
+        }
+        
+        .stats-box {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        
+        .stats-box h4 {
+            margin: 0;
+            color: #667eea;
+        }
+        
+        .stats-box p {
+            margin: 5px 0 0 0;
+            color: #6c757d;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 側邊欄 -->
+    <div class="sidebar">
+        <div class="logo">
+            <i class="bi bi-camera-video-off"></i>
+            <h5 class="mt-2">吸菸監控系統</h5>
+        </div>
+        
+        <nav class="nav flex-column">
+            <a class="nav-link" href="dashboard.html">
+                <i class="bi bi-speedometer2"></i> 儀表板
+            </a>
+            <a class="nav-link" href="cameras.html">
+                <i class="bi bi-camera"></i> 攝影機管理
+            </a>
+            <a class="nav-link active" href="monitor.html">
+                <i class="bi bi-display"></i> 即時監控
+            </a>
+            <a class="nav-link" href="detections.html">
+                <i class="bi bi-list-ul"></i> 偵測記錄
+            </a>
+            <a class="nav-link" href="settings.html">
+                <i class="bi bi-gear"></i> 系統設定
+            </a>
+            <a class="nav-link" href="#" onclick="logout()">
+                <i class="bi bi-box-arrow-right"></i> 登出
+            </a>
+        </nav>
+    </div>
+    
+    <!-- 主要內容 -->
+    <div class="main-content">
+        <h2 class="mb-4"><i class="bi bi-display"></i> 即時監控</h2>
+        
+        <!-- 攝影機選擇 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-camera"></i> 選擇攝影機</h5>
+                <div id="cameraSelector" class="row g-3">
+                    <div class="col-12 text-center text-muted">
+                        載入中...
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 視訊畫面 -->
+        <div class="row g-4">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-body p-0">
+                        <div class="video-container">
+                            <div id="videoPlaceholder" class="video-placeholder">
+                                <i class="bi bi-camera-video-off"></i>
+                                <p>請選擇攝影機開始監控</p>
+                            </div>
+                            <canvas id="displayCanvas"></canvas>
+                            <div id="statusIndicator" class="status-indicator status-offline">
+                                <i class="bi bi-wifi-off"></i> 離線
+                            </div>
+                            <div id="detectionAlert" class="detection-alert">
+                                <i class="bi bi-exclamation-triangle"></i> 偵測到吸菸行為！
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 控制面板 -->
+                <div class="control-panel">
+                    <div class="row g-3 align-items-center">
+                        <div class="col-auto">
+                            <button id="startBtn" class="btn btn-success" onclick="startMonitoring()" disabled>
+                                <i class="bi bi-play-fill"></i> 開始監控
+                            </button>
+                        </div>
+                        <div class="col-auto">
+                            <button id="stopBtn" class="btn btn-danger" onclick="stopMonitoring()" disabled>
+                                <i class="bi bi-stop-fill"></i> 停止監控
+                            </button>
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-outline-secondary" onclick="takeScreenshot()">
+                                <i class="bi bi-camera"></i> 截圖
+                            </button>
+                        </div>
+                        <div class="col-auto ms-auto">
+                            <span id="fpsCounter" class="text-muted">FPS: 0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 統計資訊 -->
+            <div class="col-lg-4">
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3"><i class="bi bi-graph-up"></i> 即時統計</h5>
+                        
+                        <div class="stats-box mb-3">
+                            <h4 id="frameCount">0</h4>
+                            <p>已處理幀數</p>
+                        </div>
+                        
+                        <div class="stats-box mb-3">
+                            <h4 id="detectionCount">0</h4>
+                            <p>偵測次數</p>
+                        </div>
+                        
+                        <div class="stats-box">
+                            <h4 id="avgConfidence">0%</h4>
+                            <p>平均信心度</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 最近偵測 -->
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3"><i class="bi bi-clock-history"></i> 最近偵測</h5>
+                        <div id="recentDetections" class="list-group list-group-flush">
+                            <div class="text-center text-muted py-3">
+                                尚無偵測記錄
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        if (window.LiveReloadOptions) {
+            window.LiveReloadOptions.enabled = false;
+        }
+        const API_URL = 'http://localhost:8000';
+        const WS_URL = 'ws://localhost:8000';
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+        
+        let selectedCamera = null;
+        let websocket = null;
+        let isMonitoring = false;
+        let frameCount = 0;
+        let detectionCount = 0;
+        let totalConfidence = 0;
+        let fpsInterval;
+        let latestDetection = null;
+        let videoStream = null;
+        
+        // 載入攝影機列表
+        async function loadCameras() {
+            try {
+                const response = await fetch(`${API_URL}/api/cameras`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                const cameras = await response.json();
+                displayCameras(cameras);
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+        
+        function displayCameras(cameras) {
+            const container = document.getElementById('cameraSelector');
+            
+            if (cameras.length === 0) {
+                container.innerHTML = `
+                    <div class="col-12 text-center">
+                        <p class="text-muted">沒有可用的攝影機</p>
+                        <a href="cameras.html" class="btn btn-primary">
+                            <i class="bi bi-plus-circle"></i> 新增攝影機
+                        </a>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = cameras.map(camera => `
+                <div class="col-md-6 col-lg-4">
+                    <div class="card camera-select-card" onclick="selectCamera(${camera.id}, '${camera.camera_name}', '${camera.api_key}')">
+                        <div class="card-body">
+                            <h6 class="card-title">
+                                <i class="bi bi-camera"></i> ${camera.camera_name}
+                            </h6>
+                            <p class="card-text mb-2">
+                                <small class="text-muted">
+                                    <i class="bi bi-tag"></i> ${camera.camera_type.toUpperCase()}<br>
+                                    <i class="bi bi-geo-alt"></i> ${camera.location || '未設定'}
+                                </small>
+                            </p>
+                            <span class="badge ${camera.is_online ? 'bg-success' : 'bg-secondary'}">
+                                ${camera.is_online ? '線上' : '離線'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function selectCamera(id, name, apiKey) {
+            document.querySelectorAll('.camera-select-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            event.currentTarget.classList.add('selected');
+            
+            selectedCamera = { id, name, apiKey };
+            document.getElementById('startBtn').disabled = false;
+            
+            console.log('已選擇攝影機:', name);
+        }
+        
+        async function startMonitoring() {
+            if (!selectedCamera) {
+                alert('請先選擇攝影機');
+                return;
+            }
+            
+            if (isMonitoring) {
+                alert("監測中");
+                return;
+
+            }
+            
+            try {
+                const wsUrl = `${WS_URL}/ws/upload/${selectedCamera.apiKey}`;
+                websocket = new WebSocket(wsUrl);
+                
+                websocket.onopen = () => {
+                    console.log('✅ WebSocket 已連線');
+                    isMonitoring = true;
+                    updateStatus('online');
+                    document.getElementById('startBtn').disabled = true;
+                    document.getElementById('stopBtn').disabled = false;
+                    document.getElementById('videoPlaceholder').style.display = 'none';
+                    document.getElementById('displayCanvas').style.display = 'block';
+                    startFpsCounter();
+                };
+                
+                // websocket.onmessage = async (event) => {
+                //     try {
+                //         const data = JSON.parse(event.data);
+                //         console.log('🔍 收到偵測結果:', data);
+                //         handleServerMessage(data);
+                //     } catch (error) {
+                //         console.error('處理訊息錯誤:', error);
+                //     }
+                // };
+
+                websocket.onmessage = async (event) => {
+                    console.log('📨 收到原始訊息');
+                    
+                    let data;
+                    try {
+                        data = JSON.parse(event.data);
+                        console.log('✅ JSON 解析成功:', data);
+                    } catch (error) {
+                        console.error('❌ JSON 解析失敗:', error);
+                        console.error('原始資料:', event.data);
+                        return; // 直接返回,不處理
+                    }
+                    
+                    console.log('🔍 收到偵測結果:', data);
+                    
+                    try {
+                        handleServerMessage(data);
+                        console.log('✅ handleServerMessage 完成');
+                    } catch (error) {
+                        console.error('❌ handleServerMessage 錯誤:', error);
+                        console.trace();
+                        // 不要讓錯誤傳播
+                    }
+                };
+                
+                websocket.onerror = (error) => {
+                    console.error('❌ WebSocket 錯誤:', error);
+
+                };
+                
+                websocket.onclose = () => {
+                    console.log('⚠️ WebSocket 已斷線');
+                    
+                    if (isMonitoring) {
+                        // 不要自動停止,保持監控狀態
+                        console.log('連線中斷,嘗試維持本地顯示');
+                        
+                    }
+                };
+                
+                await startVideoCapture();
+                
+            } catch (error) {
+                console.error('啟動監控失敗:', error);
+                alert('啟動監控失敗');
+            }
+        }
+        
+        // async function startVideoCapture() {
+        //     try {
+        //         const stream = await navigator.mediaDevices.getUserMedia({ 
+        //             video: { width: 640, height: 480 } 
+        //         });
+                
+        //         videoStream = stream;
+        //         const video = document.createElement('video');
+        //         video.srcObject = stream;
+        //         video.play();
+                
+        //         const captureCanvas = document.createElement('canvas');
+        //         captureCanvas.width = 640;
+        //         captureCanvas.height = 480;
+        //         const captureCtx = captureCanvas.getContext('2d');
+                
+        //         const displayCanvas = document.getElementById('displayCanvas');
+        //         displayCanvas.width = 640;
+        //         displayCanvas.height = 480;
+        //         const displayCtx = displayCanvas.getContext('2d');
+                
+        //         const captureInterval = setInterval(() => {
+        //             if (!isMonitoring) {
+        //                 clearInterval(captureInterval);
+        //                 stream.getTracks().forEach(track => track.stop());
+        //                 return;
+        //             }
+                    
+        //             // 繪製影像到顯示 canvas
+        //             displayCtx.drawImage(video, 0, 0, 640, 480);
+                    
+        //             // 繪製 bounding boxes
+        //             if (latestDetection && latestDetection.boxes) {
+        //                 drawBoundingBoxes(displayCtx, latestDetection.boxes);
+        //             }
+                    
+        //             // 發送到伺服器
+        //             captureCtx.drawImage(video, 0, 0, 640, 480);
+        //             captureCanvas.toBlob((blob) => {
+        //                 const reader = new FileReader();
+        //                 reader.onloadend = () => {
+        //                     const base64data = reader.result.split(',')[1];
+                            
+        //                     if (websocket && websocket.readyState === WebSocket.OPEN) {
+        //                         websocket.send(JSON.stringify({
+        //                             type: "frame",
+        //                             data: base64data,
+        //                             timestamp: new Date().toISOString()
+        //                         }));
+                                
+        //                         frameCount++;
+        //                         document.getElementById('frameCount').textContent = frameCount;
+        //                     }
+        //                 };
+        //                 reader.readAsDataURL(blob);
+        //             }, 'image/jpeg', 0.8);
+                    
+        //         }, 100);
+                
+        //     } catch (error) {
+        //         console.error('無法存取攝影機:', error);
+        //         alert('無法存取攝影機,請確認權限設定');
+        //         stopMonitoring();
+        //     }
+        // }
+// 修正後的 startVideoCapture - 加入處理鎖定機制
+
+        async function startVideoCapture() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 640, height: 480 } 
+                });
+                
+                videoStream = stream;
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.play();
+                
+                const captureCanvas = document.createElement('canvas');
+                captureCanvas.width = 640;
+                captureCanvas.height = 480;
+                const captureCtx = captureCanvas.getContext('2d');
+                
+                const displayCanvas = document.getElementById('displayCanvas');
+                displayCanvas.width = 640;
+                displayCanvas.height = 480;
+                const displayCtx = displayCanvas.getContext('2d');
+                
+                // ✅ 加入處理中標記,避免並發問題
+                let isProcessing = false;
+                let skippedFrames = 0;
+                
+                const captureInterval = setInterval(() => {
+                    if (!isMonitoring) {
+                        clearInterval(captureInterval);
+                        stream.getTracks().forEach(track => track.stop());
+                        console.log('📷 攝影機已停止');
+                        return;
+                    }
+                    
+                    // ✅ 如果還在處理上一幀,跳過這次
+                    if (isProcessing) {
+                        skippedFrames++;
+                        if (skippedFrames % 10 === 0) {
+                            console.log(`⏭️ 已跳過 ${skippedFrames} 幀 (處理速度較慢)`);
+                        }
+                        return;
+                    }
+                    
+                    isProcessing = true;
+                    
+                    try {
+                        // 繪製影像到顯示 canvas
+                        displayCtx.drawImage(video, 0, 0, 640, 480);
+                        
+                        // 繪製 bounding boxes
+                        if (latestDetection && latestDetection.boxes) {
+                            try {
+                                drawBoundingBoxes(displayCtx, latestDetection.boxes);
+                            } catch (error) {
+                                console.error('❌ drawBoundingBoxes 錯誤:', error);
+                            }
+                        }
+                        
+                        // 發送到伺服器
+                        captureCtx.drawImage(video, 0, 0, 640, 480);
+                        
+                        captureCanvas.toBlob((blob) => {
+                            if (!blob) {
+                                console.error('❌ toBlob 失敗');
+                                isProcessing = false;
+                                return;
+                            }
+                            
+                            const reader = new FileReader();
+                            
+                            reader.onerror = () => {
+                                console.error('❌ FileReader 錯誤');
+                                isProcessing = false;
+                            };
+                            
+                            reader.onloadend = () => {
+                                try {
+                                    const base64data = reader.result.split(',')[1];
+                                    
+                                    if (websocket && websocket.readyState === WebSocket.OPEN) {
+                                        websocket.send(JSON.stringify({
+                                            type: "frame",
+                                            data: base64data,
+                                            timestamp: new Date().toISOString()
+                                        }));
+                                        
+                                        frameCount++;
+                                        const countEl = document.getElementById('frameCount');
+                                        if (countEl) {
+                                            countEl.textContent = frameCount;
+                                        }
+                                        
+                                        // 重置跳過計數
+                                        if (skippedFrames > 0) {
+                                            skippedFrames = 0;
+                                        }
+                                    } else {
+                                        console.warn('⚠️ WebSocket 未連線,跳過發送');
+                                    }
+                                } catch (error) {
+                                    console.error('❌ 發送幀錯誤:', error);
+                                } finally {
+                                    // ✅ 確保解鎖
+                                    isProcessing = false;
+                                }
+                            };
+                            
+                            reader.readAsDataURL(blob);
+                        }, 'image/jpeg', 0.8);
+                        
+                    } catch (error) {
+                        console.error('❌ 捕捉幀錯誤:', error);
+                        isProcessing = false;
+                    }
+                    
+                }, 100); // 每 100ms 一次 (最多 10 FPS)
+                
+            } catch (error) {
+                console.error('❌ 無法存取攝影機:', error);
+                alert('無法存取攝影機,請確認權限設定');
+                stopMonitoring();
+            }
+        }       
+
+           
+        function drawBoundingBoxes(ctx, boxes) {
+            boxes.forEach(box => {
+                const { x1, y1, x2, y2, confidence, label } = box;
+                
+                // 設定顏色 (人=綠色, 香菸=紅色)
+                const color = label === 'person' ? '#00ff00' : '#ff0000';
+                
+                // 繪製框
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+                
+                // 繪製標籤背景
+                ctx.fillStyle = color;
+                const text = `${label} ${(confidence * 100).toFixed(0)}%`;
+                const textWidth = ctx.measureText(text).width;
+                ctx.fillRect(x1, y1 - 25, textWidth + 10, 25);
+                
+                // 繪製標籤文字
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 16px Arial';
+                ctx.fillText(text, x1 + 5, y1 - 7);
+            });
+        }
+        
+    
+        function handleServerMessage(data) {
+            console.log('📨 收到訊息:', data.type);
+            
+            try {
+                const detectionData = data.data || data;
+                
+                // 只更新 bounding boxes
+                if (detectionData.boxes) {
+                    latestDetection = detectionData;
+                    console.log('✅ 框框數量:', detectionData.boxes.length);
+                }
+                
+                // 更新信心度
+                if (detectionData.max_confidence !== undefined) {
+                    totalConfidence += detectionData.max_confidence;
+                    const avgConf = (totalConfidence / frameCount * 100).toFixed(1);
+                    document.getElementById('avgConfidence').textContent = avgConf + '%';
+                }
+                
+                console.log('✅ 完成');
+            } catch (error) {
+                console.error('❌ 錯誤:', error);
+            }
+        }
+        
+        function addRecentDetection(data) {
+            try {
+                const container = document.getElementById('recentDetections');
+                if (!container) {
+                    console.error('找不到 recentDetections 元素');
+                    return;
+                }
+                
+                if (container.querySelector('.text-center')) {
+                    container.innerHTML = '';
+                }
+                
+                const item = document.createElement('div');
+                item.className = 'list-group-item';
+                const confidence = data.max_confidence || data.confidence || 0;
+                item.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-exclamation-triangle text-danger"></i>
+                            <strong>吸菸偵測</strong><br>
+                            <small class="text-muted">${new Date().toLocaleTimeString('zh-TW')}</small>
+                        </div>
+                        <span class="badge bg-danger">${(confidence * 100).toFixed(1)}%</span>
+                    </div>
+                `;
+                
+                container.prepend(item);
+                
+                while (container.children.length > 10) {
+                    container.removeChild(container.lastChild);
+                }
+            } catch (error) {
+                console.error('❌ addRecentDetection 錯誤:', error);
+            }
+        }
+
+        function stopMonitoring() {
+            isMonitoring = false;
+            
+            if (websocket) {
+                websocket.close();
+                websocket = null;
+            }
+            
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+            
+            updateStatus('offline');
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('videoPlaceholder').style.display = 'flex';
+            document.getElementById('displayCanvas').style.display = 'none';
+            
+            stopFpsCounter();
+            latestDetection = null;
+        }
+        
+        function updateStatus(status) {
+            const indicator = document.getElementById('statusIndicator');
+            indicator.className = 'status-indicator';
+            
+            if (status === 'online') {
+                indicator.classList.add('status-online');
+                indicator.innerHTML = '<i class="bi bi-wifi"></i> 線上';
+            } else if (status === 'connecting') {
+                indicator.classList.add('status-connecting');
+                indicator.innerHTML = '<i class="bi bi-hourglass-split"></i> 連線中';
+            } else {
+                indicator.classList.add('status-offline');
+                indicator.innerHTML = '<i class="bi bi-wifi-off"></i> 離線';
+            }
+        }
+        
+        function startFpsCounter() {
+            let lastFrame = frameCount;
+            fpsInterval = setInterval(() => {
+                const fps = frameCount - lastFrame;
+                document.getElementById('fpsCounter').textContent = `FPS: ${fps}`;
+                lastFrame = frameCount;
+            }, 1000);
+        }
+        
+        function stopFpsCounter() {
+            if (fpsInterval) {
+                clearInterval(fpsInterval);
+                document.getElementById('fpsCounter').textContent = 'FPS: 0';
+            }
+        }
+        
+        function takeScreenshot() {
+            const canvas = document.getElementById('displayCanvas');
+            if (canvas.style.display === 'block') {
+                const link = document.createElement('a');
+                link.download = `screenshot_${Date.now()}.jpg`;
+                link.href = canvas.toDataURL('image/jpeg');
+                link.click();
+            }
+        }
+        
+        function logout() {
+            stopMonitoring();
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = 'login.html';
+        }
+        
+        // 初始載入
+        loadCameras();
+        
+        // 頁面關閉時停止監控
+        // window.addEventListener('beforeunload', () => {
+        //     stopMonitoring();
+        // });
+        // window.addEventListener('beforeunload', (e) => {
+        //     if (isMonitoring && !isNavigating) {
+        //         stopMonitoring();
+        //         e.preventDefault();
+        //         e.returnValue = '監控進行中';
+        //         return e.returnValue;
+        //     }
+        // });
+        
+        window.addEventListener('beforeunload', (e) => {
+        if (isMonitoring) {
+            // 只是記錄,不要停止監控
+            console.log('⚠️ 頁面即將關閉');
+            // 不要呼叫 stopMonitoring()
+            }
+        });
+    </script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

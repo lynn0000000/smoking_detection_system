@@ -1,0 +1,616 @@
+# ==================== 路徑修正 ====================
+import sys
+from pathlib import Path
+
+
+
+# 將專案根目錄加入 Python 路徑
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+# ==================== 標準函式庫 ====================
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, File, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from ultralytics import YOLO
+import cv2
+import numpy as np
+from datetime import datetime, timedelta
+import asyncio
+import json
+import base64
+from pathlib import Path
+from typing import List, Optional
+import torch
+# ==================== 專案模組 ====================
+from server.database import get_db, User, Camera, Detection, init_db
+from server.auth import (
+    authenticate_user, create_access_token, get_current_user, 
+    get_password_hash, UserCreate, UserLogin, Token, UserResponse,
+    generate_camera_api_key, verify_camera_api_key
+)
+from server.config import MODEL_PATH, SCREENSHOT_DIR
+from pydantic import BaseModel
+
+# ==================== FastAPI 應用程式 ====================
+app = FastAPI(title="吸菸監控系統 API v2", version="2.0")
+
+# CORS 設定
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 全域變數
+model = None
+active_websockets = {}  # {camera_id: [websocket1, websocket2, ...]}
+last_alert_time = {}  # {camera_id: datetime} - 追蹤最後警報時間
+ALERT_COOLDOWN_SECONDS = 15  # 警報冷卻時間（秒）
+
+from fastapi.staticfiles import StaticFiles
+import os
+
+# 假設你的 frontend 資料夾和 main.py 是同層,路徑就用 "frontend"
+app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
+
+# ==================== Pydantic 模型 ====================
+
+class CameraCreate(BaseModel):
+    camera_name: str
+    camera_type: str  # 'local', 'rtsp', 'usb'
+    camera_source: str  # "0", "rtsp://...", etc.
+    location: Optional[str] = None
+
+
+class CameraUpdate(BaseModel):
+    camera_name: Optional[str] = None
+    location: Optional[str] = None
+    confidence_threshold: Optional[float] = None
+    iou_threshold: Optional[float] = None
+    enable_alert: Optional[bool] = None
+    enable_screenshot: Optional[bool] = None
+
+
+class DetectionResponse(BaseModel):
+    id: int
+    timestamp: datetime
+    camera_name: str
+    location: Optional[str]
+    has_person: bool
+    has_cigarette: bool
+    is_smoking: bool
+    confidence: float
+    screenshot_path: Optional[str]
+    
+    class Config:
+        from_attributes = True
+
+
+# ==================== 初始化 ====================
+
+def init_model():
+    """初始化 YOLO 模型"""
+    global model
+    try:
+        model = YOLO(MODEL_PATH)
+        
+        if torch.cuda.is_available():
+            print(f"✅ 使用 GPU: {torch.cuda.get_device_name(0)}")
+            model.to('cuda')
+        else:
+            print("⚠️ GPU 不可用,使用 CPU")
+        
+        print("✅ 模型載入成功")
+    except Exception as e:
+        print(f"❌ 模型載入失敗: {e}")
+
+
+# def init_model():
+#     """初始化 YOLO 模型"""
+#     global model
+#     print("⚠️ AI 模型暫時停用")
+#     model = None
+
+@app.on_event("startup")
+async def startup_event():
+    """啟動時初始化"""
+    init_db()
+    init_model()
+    SCREENSHOT_DIR.mkdir(exist_ok=True)
+    print("✅ 系統初始化完成")
+
+
+# ==================== 認證 API ====================
+
+@app.post("/api/auth/register", response_model=UserResponse)
+async def register(user: UserCreate, db: Session = Depends(get_db)):
+    """用戶註冊"""
+    # 檢查用戶名是否已存在
+    db_user = db.query(User).filter(User.username == user.username).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="用戶名已被使用")
+    
+    # 檢查 email 是否已存在
+    db_user = db.query(User).filter(User.email == user.email).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email 已被使用")
+    
+    # 建立新用戶
+    hashed_password = get_password_hash(user.password)
+    db_user = User(
+        username=user.username,
+        email=user.email,
+        hashed_password=hashed_password,
+        full_name=user.full_name
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    
+    return db_user
+
+
+@app.post("/api/auth/login", response_model=Token)
+async def login(user_login: UserLogin, db: Session = Depends(get_db)):
+    """用戶登入"""
+    user = authenticate_user(db, user_login.username, user_login.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用戶名或密碼錯誤",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 建立 access token
+    access_token = create_access_token(data={"sub": user.username})
+    
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.get("/api/auth/me", response_model=UserResponse)
+async def get_me(current_user: User = Depends(get_current_user)):
+    """取得當前用戶資訊"""
+    return current_user
+
+
+# ==================== 攝影機管理 API ====================
+
+@app.post("/api/cameras")
+async def create_camera(
+    camera: CameraCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """新增攝影機"""
+    api_key = generate_camera_api_key()
+    
+    db_camera = Camera(
+        user_id=current_user.id,
+        camera_name=camera.camera_name,
+        camera_type=camera.camera_type,
+        camera_source=camera.camera_source,
+        location=camera.location,
+        api_key=api_key
+    )
+    
+    db.add(db_camera)
+    db.commit()
+    db.refresh(db_camera)
+    
+    return {
+        "id": db_camera.id,
+        "camera_name": db_camera.camera_name,
+        "api_key": api_key,
+        "message": "攝影機新增成功,請妥善保管 API Key"
+    }
+
+
+@app.get("/api/cameras")
+async def list_cameras(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """列出用戶的所有攝影機"""
+    cameras = db.query(Camera).filter(Camera.user_id == current_user.id).all()
+    return cameras
+
+
+@app.get("/api/cameras/{camera_id}")
+async def get_camera(
+    camera_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """取得攝影機詳細資訊"""
+    camera = db.query(Camera).filter(
+        Camera.id == camera_id,
+        Camera.user_id == current_user.id
+    ).first()
+    
+    if not camera:
+        raise HTTPException(status_code=404, detail="攝影機不存在")
+    
+    return camera
+
+
+@app.put("/api/cameras/{camera_id}")
+async def update_camera(
+    camera_id: int,
+    camera_update: CameraUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """更新攝影機設定"""
+    camera = db.query(Camera).filter(
+        Camera.id == camera_id,
+        Camera.user_id == current_user.id
+    ).first()
+    
+    if not camera:
+        raise HTTPException(status_code=404, detail="攝影機不存在")
+    
+    # 更新欄位
+    update_data = camera_update.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(camera, key, value)
+    
+    db.commit()
+    db.refresh(camera)
+    
+    return {"message": "攝影機設定已更新", "camera": camera}
+
+
+@app.delete("/api/cameras/{camera_id}")
+async def delete_camera(
+    camera_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """刪除攝影機"""
+    camera = db.query(Camera).filter(
+        Camera.id == camera_id,
+        Camera.user_id == current_user.id
+    ).first()
+    
+    if not camera:
+        raise HTTPException(status_code=404, detail="攝影機不存在")
+    
+    db.delete(camera)
+    db.commit()
+    
+    return {"message": "攝影機已刪除"}
+
+
+# ==================== 偵測記錄 API ====================
+
+@app.get("/api/detections")
+async def get_detections(
+    camera_id: Optional[int] = None,
+    limit: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """取得偵測記錄"""
+    query = db.query(Detection).filter(Detection.user_id == current_user.id)
+    
+    if camera_id:
+        query = query.filter(Detection.camera_id == camera_id)
+    
+    detections = query.order_by(Detection.timestamp.desc()).limit(limit).all()
+    
+    # 加入攝影機名稱
+    result = []
+    for d in detections:
+        camera = db.query(Camera).filter(Camera.id == d.camera_id).first()
+        result.append({
+            "id": d.id,
+            "timestamp": d.timestamp,
+            "camera_name": camera.camera_name if camera else "未知",
+            "location": camera.location if camera else None,
+            "has_person": d.has_person,
+            "has_cigarette": d.has_cigarette,
+            "is_smoking": d.is_smoking,
+            "confidence": d.confidence,
+            "screenshot_path": d.screenshot_path
+        })
+    
+    return result
+
+
+@app.get("/api/statistics")
+async def get_statistics(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """取得統計資料"""
+    # 總偵測數
+    total = db.query(Detection).filter(Detection.user_id == current_user.id).count()
+    
+    # 今日偵測數
+    today = datetime.now().date()
+    today_count = db.query(Detection).filter(
+        Detection.user_id == current_user.id,
+        Detection.timestamp >= today
+    ).count()
+    
+    # 攝影機數量
+    camera_count = db.query(Camera).filter(Camera.user_id == current_user.id).count()
+    
+    # 在線攝影機數
+    online_cameras = db.query(Camera).filter(
+        Camera.user_id == current_user.id,
+        Camera.is_online == True
+    ).count()
+    
+    return {
+        "total_detections": total,
+        "today_detections": today_count,
+        "total_cameras": camera_count,
+        "online_cameras": online_cameras
+    }
+
+
+# ==================== WebSocket 即時串流 (客戶端上傳) ====================
+
+@app.websocket("/ws/upload/{api_key}")
+async def websocket_upload(websocket: WebSocket, api_key: str, db: Session = Depends(get_db)):
+    """接收客戶端攝影機上傳的影像並進行偵測"""
+    await websocket.accept()
+    
+    # 驗證 API Key
+    try:
+        camera = verify_camera_api_key(api_key, db)
+    except HTTPException:
+        await websocket.close(code=1008, reason="無效的 API Key")
+        return
+    
+    # 更新攝影機狀態
+    camera.is_online = True
+    camera.last_seen = datetime.now()
+    db.commit()
+    
+    print(f"📷 攝影機 [{camera.camera_name}] 已連線")
+    
+    try:
+        while True:
+            try:
+                # 接收 base64 編碼的影像
+                data = await websocket.receive_json()
+                
+                if data.get("type") == "frame":
+                    frame_base64 = data.get("data")
+                    
+                    # 解碼影像
+                    img_data = base64.b64decode(frame_base64)
+                    np_arr = np.frombuffer(img_data, np.uint8)
+                    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                    
+                    # 執行偵測
+                    detection_data, annotated_frame = detect_smoking(frame, camera)
+                    
+                    # 初始化變數
+                    current_time = datetime.now()
+                    time_since_last_alert = 0
+                    cooldown_remaining = 0
+                    
+                    # 如果偵測到吸菸
+                    if detection_data and detection_data["is_smoking"]:
+                        # 檢查是否需要發送警報（冷卻時間機制）
+                        should_alert = False
+                        
+                        if camera.id not in last_alert_time:
+                            # 首次偵測,直接警報
+                            should_alert = True
+                            time_since_last_alert = 0
+                        else:
+                            # 檢查距離上次警報是否超過冷卻時間
+                            time_since_last_alert = (current_time - last_alert_time[camera.id]).total_seconds()
+                            if time_since_last_alert >= ALERT_COOLDOWN_SECONDS:
+                                should_alert = True
+                        
+                        if should_alert:
+                            print(f"⚠️ [{camera.camera_name}] 偵測到吸菸行為！（距上次警報：{time_since_last_alert:.1f}秒）")
+                            
+                            # 更新最後警報時間
+                            last_alert_time[camera.id] = current_time
+                            
+                            # 儲存截圖
+                            if camera.enable_screenshot:
+                                screenshot_path = save_screenshot(annotated_frame, camera, db)
+                                detection_data["screenshot_path"] = screenshot_path
+                            
+                            # 儲存偵測記錄
+                            save_detection(detection_data, camera, db)
+                            
+                            # 回傳警報 - 檢查連線狀態
+                            if websocket.client_state.name == "CONNECTED":
+                                try:
+                                    await websocket.send_json({
+                                        "type": "alert",
+                                        "data": detection_data,
+                                        "message": f"偵測到吸菸行為 (信心度: {detection_data.get('max_confidence', 0):.2f})"
+                                    })
+                                except Exception as e:
+                                    print(f"⚠️ [{camera.camera_name}] 發送警報失敗: {e}")
+                                    break
+                            else:
+                                print(f"⚠️ [{camera.camera_name}] 連線已關閉,停止發送")
+                                break
+                        else:
+                            # 在冷卻期間,只發送偵測結果但不警報
+                            time_remaining = ALERT_COOLDOWN_SECONDS - time_since_last_alert
+                            cooldown_remaining = time_remaining
+                            print(f"🔇 [{camera.camera_name}] 偵測到吸菸但在冷卻期間（剩餘 {time_remaining:.1f}秒）")
+                        
+                        # 計算冷卻剩餘時間
+                        if camera.id in last_alert_time:
+                            cooldown_remaining = max(0, ALERT_COOLDOWN_SECONDS - (current_time - last_alert_time[camera.id]).total_seconds())
+                    
+                    # 回傳偵測結果(不含影像) - 檢查連線狀態
+                    if websocket.client_state.name == "CONNECTED":
+                        try:
+                            await websocket.send_json({
+                                "type": "detection_result",
+                                "data": detection_data,
+                                "cooldown_remaining": cooldown_remaining
+                            })
+                        except Exception as e:
+                            print(f"⚠️ [{camera.camera_name}] 發送偵測結果失敗: {e}")
+                            break
+                    else:
+                        print(f"⚠️ [{camera.camera_name}] 連線已關閉,停止處理")
+                        break
+                    
+                    # 更新最後上線時間
+                    camera.last_seen = datetime.now()
+                    db.commit()
+                    
+            except (ConnectionResetError, asyncio.CancelledError, WebSocketDisconnect) as e:
+                print(f"⚠️ [{camera.camera_name}] 連線中斷: {type(e).__name__}")
+                break
+            except Exception as e:
+                print(f"❌ [{camera.camera_name}] 處理訊息時發生錯誤: {type(e).__name__} - {e}")
+                # 檢查是否為連線相關錯誤
+                if "close" in str(e).lower() or "connection" in str(e).lower():
+                    print(f"⚠️ [{camera.camera_name}] 偵測到連線問題,中斷處理")
+                    break
+                # 其他錯誤繼續處理下一幀
+                continue
+    
+    except WebSocketDisconnect:
+        print(f"📷 攝影機 [{camera.camera_name}] 正常斷線")
+    except Exception as e:
+        print(f"❌ [{camera.camera_name}] WebSocket 異常: {e}")
+    finally:
+        # 清理工作
+        camera.is_online = False
+        db.commit()
+        # 清除該攝影機的警報時間記錄
+        if camera.id in last_alert_time:
+            del last_alert_time[camera.id]
+        print(f"📷 攝影機 [{camera.camera_name}] 已斷線")
+
+
+# ==================== 偵測邏輯 ====================
+
+def detect_smoking(frame, camera: Camera):
+
+    """執行吸菸偵測"""
+    if model is None:
+        # 返回空的偵測結果
+        return {
+            "has_person": False,
+            "has_cigarette": False,
+            "is_smoking": False,
+            "boxes": [],
+            "max_confidence": 0
+        }, frame
+    
+    # 執行推論
+    results = model.predict(
+        frame,
+        conf=camera.confidence_threshold,
+        iou=camera.iou_threshold,
+        verbose=False
+    )
+    
+    result = results[0]
+    boxes = result.boxes
+
+    # 檢查是否同時有人和香菸
+    has_person = any(int(box.cls[0]) == 0 for box in boxes)
+    has_cigarette = any(int(box.cls[0]) == 1 for box in boxes)
+    
+    detection_data = {
+        "has_person": has_person,
+        "has_cigarette": has_cigarette,
+        "is_smoking": has_person and has_cigarette,
+        "boxes": []
+    }
+    
+    # 繪製偵測框
+    annotated_frame = result.plot()
+    
+    # 收集框的資訊
+    max_confidence = 0
+    for box in boxes:
+        x1, y1, x2, y2 = box.xyxy[0].tolist()
+        conf = float(box.conf[0])
+        cls = int(box.cls[0])
+        
+        if conf > max_confidence:
+            max_confidence = conf
+        
+        detection_data["boxes"].append({
+            "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+            "confidence": conf,
+            "class": cls,
+            "label": "cigarette" if cls == 0 else "person"
+        })
+    
+    detection_data["max_confidence"] = max_confidence
+    
+    return detection_data, annotated_frame
+
+
+def save_screenshot(frame, camera: Camera, db: Session):
+    """儲存截圖"""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"violation_{camera.id}_{timestamp}.jpg"
+    filepath = SCREENSHOT_DIR / filename
+    
+    cv2.imwrite(str(filepath), frame)
+    return str(filepath)
+    
+
+def save_detection(detection_data, camera: Camera, db: Session):
+    """儲存偵測記錄到資料庫"""
+    detection = Detection(
+        user_id=camera.user_id,
+        camera_id=camera.id,
+        has_person=detection_data["has_person"],
+        has_cigarette=detection_data["has_cigarette"],
+        is_smoking=detection_data["is_smoking"],
+        confidence=detection_data.get("max_confidence", 0),
+        screenshot_path=detection_data.get("screenshot_path"),
+        detection_details=json.dumps(detection_data["boxes"])
+    )
+    
+    db.add(detection)
+    db.commit()
+
+
+# ==================== 其他 API ====================
+
+@app.get("/")
+async def root():
+    return {
+        "message": "吸菸監控系統 API v2.0",
+        "version": "2.0",
+        "features": ["多用戶支援", "多攝影機管理", "JWT 認證", "MySQL 資料庫", "15秒警報冷卻機制"],
+        "endpoints": {
+            "auth": "/api/auth/*",
+            "cameras": "/api/cameras",
+            "detections": "/api/detections",
+            "statistics": "/api/statistics",
+            "websocket_upload": "/ws/upload/{api_key}"
+        }
+    }
+
+
+@app.get("/api/screenshots/{filename}")
+async def get_screenshot(filename: str):
+    """取得截圖"""
+    filepath = SCREENSHOT_DIR / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="截圖不存在")
+    return FileResponse(filepath)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

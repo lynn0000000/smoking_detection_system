@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>吸菸監控系統 - 註冊</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            background: linear-gradient(180deg, #000000 0%, #001441 50%, #1f36a0 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+        
+        .register-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 40px;
+            width: 100%;
+            max-width: 450px;
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo i {
+            font-size: 60px;
+            color: #667eea;
+        }
+        
+        .logo h2 {
+            margin-top: 15px;
+            color: #333;
+            font-weight: bold;
+        }
+        
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+        
+        .btn-register {
+            background: linear-gradient(180deg, #000000 0%, #001441 50%, #1f36a0 100%);
+            border: none;
+            padding: 12px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        
+        .btn-register:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="register-container">
+        <div class="logo">
+            <i class="bi bi-person-plus"></i>
+            <h2>註冊新帳號</h2>
+            <p class="text-muted">加入吸菸監控系統</p>
+        </div>
+        
+        <div id="alertBox"></div>
+        
+        <form id="registerForm">
+            <div class="mb-3">
+                <label class="form-label"><i class="bi bi-person"></i> 用戶名</label>
+                <input type="text" class="form-control" id="username" required>
+                <small class="text-muted">3-20 個字元</small>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label"><i class="bi bi-envelope"></i> Email</label>
+                <input type="email" class="form-control" id="email" required>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label"><i class="bi bi-person-badge"></i> 姓名</label>
+                <input type="text" class="form-control" id="fullName">
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label"><i class="bi bi-lock"></i> 密碼</label>
+                <input type="password" class="form-control" id="password" required minlength="6">
+                <small class="text-muted">至少 6 個字元</small>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label"><i class="bi bi-lock-fill"></i> 確認密碼</label>
+                <input type="password" class="form-control" id="confirmPassword" required>
+            </div>
+            
+            <button type="submit" class="btn btn-primary btn-register w-100">
+                <i class="bi bi-check-circle"></i> 註冊
+            </button>
+        </form>
+        
+        <div class="text-center mt-3">
+            <small class="text-muted">已有帳號？</small>
+            <a href="login.html" class="text-decoration-none">立即登入</a>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const email = document.getElementById('email').value;
+            const fullName = document.getElementById('fullName').value;
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            // 驗證密碼
+            if (password !== confirmPassword) {
+                showAlert('密碼不一致！', 'danger');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/api/auth/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username,
+                        email,
+                        password,
+                        full_name: fullName
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showAlert('註冊成功！正在跳轉到登入頁面...', 'success');
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 2000);
+                } else {
+                    showAlert(data.detail || '註冊失敗', 'danger');
+                }
+            } catch (error) {
+                showAlert('連線失敗，請確認伺服器是否運行', 'danger');
+                console.error('Error:', error);
+            }
+        });
+        
+        function showAlert(message, type) {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.innerHTML = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+        }
+    </script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

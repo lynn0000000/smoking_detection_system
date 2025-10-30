@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>偵測記錄 - 吸菸監控系統</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            background: #f8f9fa;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+        
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: 250px;
+            background: linear-gradient(180deg, #000000 0%, #001441 50%, #1f36a0 100%);
+            color: white;
+            padding: 20px 0;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        }
+        
+        .sidebar .logo {
+            text-align: center;
+            padding: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .sidebar .logo i {
+            font-size: 40px;
+        }
+        
+        .sidebar .nav-link {
+            color: rgba(255,255,255,0.8);
+            padding: 15px 30px;
+            transition: all 0.3s;
+        }
+        
+        .sidebar .nav-link:hover,
+        .sidebar .nav-link.active {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+        
+        .sidebar .nav-link i {
+            margin-right: 10px;
+            font-size: 18px;
+        }
+        
+        .main-content {
+            margin-left: 250px;
+            padding: 30px;
+        }
+        
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+            border: none;
+        }
+        
+        .table thead {
+            background: #f8f9fa;
+        }
+        
+        .filter-section {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+    </style>
+</head>
+<body>
+    <!-- 側邊欄 -->
+    <div class="sidebar">
+        <div class="logo">
+            <i class="bi bi-camera-video-off"></i>
+            <h5 class="mt-2">吸菸監控系統</h5>
+        </div>
+        
+        <nav class="nav flex-column">
+            <a class="nav-link" href="dashboard.html">
+                <i class="bi bi-speedometer2"></i> 儀表板
+            </a>
+            <a class="nav-link" href="cameras.html">
+                <i class="bi bi-camera"></i> 攝影機管理
+            </a>
+            <a class="nav-link" href="monitor.html">
+                <i class="bi bi-display"></i> 即時監控
+            </a>
+            <a class="nav-link active" href="detections.html">
+                <i class="bi bi-list-ul"></i> 偵測記錄
+            </a>
+            <a class="nav-link" href="settings.html">
+                <i class="bi bi-gear"></i> 系統設定
+            </a>
+            <a class="nav-link" href="#" onclick="logout()">
+                <i class="bi bi-box-arrow-right"></i> 登出
+            </a>
+        </nav>
+    </div>
+    
+    <!-- 主要內容 -->
+    <div class="main-content">
+        <h2 class="mb-4"><i class="bi bi-list-ul"></i> 偵測記錄</h2>
+        
+        <!-- 篩選區 -->
+        <div class="filter-section">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">攝影機</label>
+                    <select class="form-select" id="filterCamera" onchange="loadDetections()">
+                        <option value="">全部攝影機</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-3">
+                    <label class="form-label">顯示數量</label>
+                    <select class="form-select" id="filterLimit" onchange="loadDetections()">
+                        <option value="20">20 筆</option>
+                        <option value="50" selected>50 筆</option>
+                        <option value="100">100 筆</option>
+                        <option value="200">200 筆</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-3">
+                    <label class="form-label">狀態</label>
+                    <select class="form-select" id="filterStatus">
+                        <option value="all">全部</option>
+                        <option value="smoking">僅顯示吸菸</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" onclick="loadDetections()">
+                        <i class="bi bi-search"></i> 查詢
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 記錄表格 -->
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>時間</th>
+                                <th>攝影機</th>
+                                <th>位置</th>
+                                <th>偵測到人</th>
+                                <th>偵測到香菸</th>
+                                <th>信心度</th>
+                                <th>狀態</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detectionsTable">
+                            <tr>
+                                <td colspan="9" class="text-center text-muted">載入中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div id="noData" class="text-center py-5" style="display: none;">
+                    <i class="bi bi-inbox" style="font-size: 60px; color: #ccc;"></i>
+                    <p class="text-muted mt-3">目前沒有偵測記錄</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+        
+        // 載入攝影機列表(用於篩選)
+        async function loadCameras() {
+            try {
+                const response = await fetch(`${API_URL}/api/cameras`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                const cameras = await response.json();
+                const select = document.getElementById('filterCamera');
+                
+                cameras.forEach(camera => {
+                    const option = document.createElement('option');
+                    option.value = camera.id;
+                    option.textContent = camera.camera_name;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading cameras:', error);
+            }
+        }
+        
+        // 載入偵測記錄
+        async function loadDetections() {
+            const cameraId = document.getElementById('filterCamera').value;
+            const limit = document.getElementById('filterLimit').value;
+            const status = document.getElementById('filterStatus').value;
+            
+            let url = `${API_URL}/api/detections?limit=${limit}`;
+            if (cameraId) {
+                url += `&camera_id=${cameraId}`;
+            }
+            
+            try {
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                let detections = await response.json();
+                
+                // 篩選狀態
+                if (status === 'smoking') {
+                    detections = detections.filter(d => d.is_smoking);
+                }
+                
+                displayDetections(detections);
+            } catch (error) {
+                console.error('Error loading detections:', error);
+            }
+        }
+        
+        function displayDetections(detections) {
+            const tbody = document.getElementById('detectionsTable');
+            const noData = document.getElementById('noData');
+            
+            if (detections.length === 0) {
+                tbody.innerHTML = '';
+                noData.style.display = 'block';
+                return;
+            }
+            
+            noData.style.display = 'none';
+            
+            tbody.innerHTML = detections.map(d => `
+                <tr>
+                    <td>${d.id}</td>
+                    <td>${new Date(d.timestamp).toLocaleString('zh-TW')}</td>
+                    <td><i class="bi bi-camera"></i> ${d.camera_name}</td>
+                    <td>${d.location || '-'}</td>
+                    <td>
+                        <span class="badge ${d.has_person ? 'bg-success' : 'bg-secondary'}">
+                            ${d.has_person ? '是' : '否'}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge ${d.has_cigarette ? 'bg-warning' : 'bg-secondary'}">
+                            ${d.has_cigarette ? '是' : '否'}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar ${d.confidence > 0.8 ? 'bg-success' : d.confidence > 0.6 ? 'bg-warning' : 'bg-danger'}" 
+                                 style="width: ${d.confidence * 100}%">
+                                ${(d.confidence * 100).toFixed(1)}%
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge ${d.is_smoking ? 'bg-danger' : 'bg-success'}">
+                            ${d.is_smoking ? '⚠️ 偵測到吸菸' : '✓ 正常'}
+                        </span>
+                    </td>
+                    <td>
+                        ${d.screenshot_path ? `
+                            <button class="btn btn-sm btn-outline-primary" onclick="viewScreenshot('${d.screenshot_path}')">
+                                <i class="bi bi-image"></i> 查看
+                            </button>
+                        ` : '-'}
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        function viewScreenshot(path) {
+            filepath_fixed = path.replace("\x0b", "v")
+            // print(filepath_fixed)
+            alert('截圖查看功能開發中...\n路徑: ' + filepath_fixed);
+        }
+
+        
+        function logout() {
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = 'login.html';
+        }
+        
+        // 初始載入
+        loadCameras();
+        loadDetections();
+    </script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
