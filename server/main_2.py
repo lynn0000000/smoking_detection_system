@@ -48,15 +48,13 @@ app.add_middleware(
 # 全域變數
 model = None
 active_websockets = {}  # {camera_id: [websocket1, websocket2, ...]}
-# 全域變數
-last_detection_time = {}  # {camera_id: datetime}
-DETECTION_COOLDOWN = timedelta(seconds=10)  # 同一攝影機10秒內只記一次
-DETECTION_STABLE_FRAMES = 3  # 連續3幀偵測到才算真正吸菸
-smoking_frame_counter = {}  # {camera_id: 目前連續吸菸幀數}
+last_alert_time = {}  # {camera_id: datetime} - 追蹤最後警報時間
+ALERT_COOLDOWN_SECONDS = 15  # 警報冷卻時間（秒）
+
 from fastapi.staticfiles import StaticFiles
 import os
 
-# 假設你的 frontend 資料夾和 main.py 是同層，路徑就用 "frontend"
+# 假設你的 frontend 資料夾和 main.py 是同層,路徑就用 "frontend"
 app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
 
 # ==================== Pydantic 模型 ====================
@@ -104,7 +102,7 @@ def init_model():
             print(f"✅ 使用 GPU: {torch.cuda.get_device_name(0)}")
             model.to('cuda')
         else:
-            print("⚠️ GPU 不可用，使用 CPU")
+            print("⚠️ GPU 不可用,使用 CPU")
         
         print("✅ 模型載入成功")
     except Exception as e:
@@ -379,72 +377,121 @@ async def websocket_upload(websocket: WebSocket, api_key: str, db: Session = Dep
     
     try:
         while True:
-            # 接收 base64 編碼的影像
-            data = await websocket.receive_json()
-            
-            if data.get("type") == "frame":
-                frame_base64 = data.get("data")
+            try:
+                # 接收 base64 編碼的影像
+                data = await websocket.receive_json()
                 
-                # 解碼影像
-                img_data = base64.b64decode(frame_base64)
-                np_arr = np.frombuffer(img_data, np.uint8)
-                frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-                
-                # 執行偵測
-                detection_data, annotated_frame = detect_smoking(frame, camera)
-                
-                # 檢查是否偵測到吸菸
-                if detection_data and detection_data["is_smoking"]:
-                    cam_id = camera.id
-                    now = datetime.now()
-
-                    # 初始化該攝影機的計數器
-                    if cam_id not in smoking_frame_counter:
-                        smoking_frame_counter[cam_id] = 0
-                    smoking_frame_counter[cam_id] += 1
-
-                    # 若連續3幀偵測到吸菸才視為有效
-                    if smoking_frame_counter[cam_id] >= DETECTION_STABLE_FRAMES:
-                        # 冷卻時間檢查
-                        last_time = last_detection_time.get(cam_id)
-                        if not last_time or (now - last_time > DETECTION_COOLDOWN):
-                            print(f"⚠️ [{camera.camera_name}] 偵測到穩定吸菸行為！")
-
+                if data.get("type") == "frame":
+                    frame_base64 = data.get("data")
+                    
+                    # 解碼影像
+                    img_data = base64.b64decode(frame_base64)
+                    np_arr = np.frombuffer(img_data, np.uint8)
+                    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                    
+                    # 執行偵測
+                    detection_data, annotated_frame = detect_smoking(frame, camera)
+                    
+                    # 初始化變數
+                    current_time = datetime.now()
+                    time_since_last_alert = 0
+                    cooldown_remaining = 0
+                    
+                    # 如果偵測到吸菸
+                    if detection_data and detection_data["is_smoking"]:
+                        # 檢查是否需要發送警報（冷卻時間機制）
+                        should_alert = False
+                        
+                        if camera.id not in last_alert_time:
+                            # 首次偵測,直接警報
+                            should_alert = True
+                            time_since_last_alert = 0
+                        else:
+                            # 檢查距離上次警報是否超過冷卻時間
+                            time_since_last_alert = (current_time - last_alert_time[camera.id]).total_seconds()
+                            if time_since_last_alert >= ALERT_COOLDOWN_SECONDS:
+                                should_alert = True
+                        
+                        if should_alert:
+                            print(f"⚠️ [{camera.camera_name}] 偵測到吸菸行為！（距上次警報：{time_since_last_alert:.1f}秒）")
+                            
+                            # 更新最後警報時間
+                            last_alert_time[camera.id] = current_time
+                            
+                            # 儲存截圖
                             if camera.enable_screenshot:
                                 screenshot_path = save_screenshot(annotated_frame, camera, db)
                                 detection_data["screenshot_path"] = screenshot_path
-
+                            
+                            # 儲存偵測記錄
                             save_detection(detection_data, camera, db)
-                            last_detection_time[cam_id] = now
-
-                            await websocket.send_json({
-                                "type": "alert",
-                                "data": detection_data
-                            })
-                else:
-                    # 若中斷吸菸，重設計數器
-                    smoking_frame_counter[camera.id] = 0
-
+                            
+                            # 回傳警報 - 檢查連線狀態
+                            if websocket.client_state.name == "CONNECTED":
+                                try:
+                                    await websocket.send_json({
+                                        "type": "alert",
+                                        "data": detection_data,
+                                        "message": f"偵測到吸菸行為 (信心度: {detection_data.get('max_confidence', 0):.2f})"
+                                    })
+                                except Exception as e:
+                                    print(f"⚠️ [{camera.camera_name}] 發送警報失敗: {e}")
+                                    break
+                            else:
+                                print(f"⚠️ [{camera.camera_name}] 連線已關閉,停止發送")
+                                break
+                        else:
+                            # 在冷卻期間,只發送偵測結果但不警報
+                            time_remaining = ALERT_COOLDOWN_SECONDS - time_since_last_alert
+                            cooldown_remaining = time_remaining
+                            print(f"🔇 [{camera.camera_name}] 偵測到吸菸但在冷卻期間（剩餘 {time_remaining:.1f}秒）")
+                        
+                        # 計算冷卻剩餘時間
+                        if camera.id in last_alert_time:
+                            cooldown_remaining = max(0, ALERT_COOLDOWN_SECONDS - (current_time - last_alert_time[camera.id]).total_seconds())
                     
-                    # 回傳警報
-                    await websocket.send_json({
-                        "type": "alert",
-                        "data": detection_data
-                    })
-                
-                # 回傳偵測結果(不含影像)
-                await websocket.send_json({
-                    "type": "detection_result",
-                    "data": detection_data
-                })
-                
-                # 更新最後上線時間
-                camera.last_seen = datetime.now()
-                db.commit()
+                    # 回傳偵測結果(不含影像) - 檢查連線狀態
+                    if websocket.client_state.name == "CONNECTED":
+                        try:
+                            await websocket.send_json({
+                                "type": "detection_result",
+                                "data": detection_data,
+                                "cooldown_remaining": cooldown_remaining
+                            })
+                        except Exception as e:
+                            print(f"⚠️ [{camera.camera_name}] 發送偵測結果失敗: {e}")
+                            break
+                    else:
+                        print(f"⚠️ [{camera.camera_name}] 連線已關閉,停止處理")
+                        break
+                    
+                    # 更新最後上線時間
+                    camera.last_seen = datetime.now()
+                    db.commit()
+                    
+            except (ConnectionResetError, asyncio.CancelledError, WebSocketDisconnect) as e:
+                print(f"⚠️ [{camera.camera_name}] 連線中斷: {type(e).__name__}")
+                break
+            except Exception as e:
+                print(f"❌ [{camera.camera_name}] 處理訊息時發生錯誤: {type(e).__name__} - {e}")
+                # 檢查是否為連線相關錯誤
+                if "close" in str(e).lower() or "connection" in str(e).lower():
+                    print(f"⚠️ [{camera.camera_name}] 偵測到連線問題,中斷處理")
+                    break
+                # 其他錯誤繼續處理下一幀
+                continue
     
     except WebSocketDisconnect:
+        print(f"📷 攝影機 [{camera.camera_name}] 正常斷線")
+    except Exception as e:
+        print(f"❌ [{camera.camera_name}] WebSocket 異常: {e}")
+    finally:
+        # 清理工作
         camera.is_online = False
         db.commit()
+        # 清除該攝影機的警報時間記錄
+        if camera.id in last_alert_time:
+            del last_alert_time[camera.id]
         print(f"📷 攝影機 [{camera.camera_name}] 已斷線")
 
 
@@ -506,8 +553,7 @@ def detect_smoking(frame, camera: Camera):
         })
     
     detection_data["max_confidence"] = max_confidence
-
-
+    
     return detection_data, annotated_frame
 
 
@@ -518,10 +564,8 @@ def save_screenshot(frame, camera: Camera, db: Session):
     filepath = SCREENSHOT_DIR / filename
     
     cv2.imwrite(str(filepath), frame)
+    return str(filepath)
     
-    # return str(filepath)
-    return filename
-
 
 def save_detection(detection_data, camera: Camera, db: Session):
     """儲存偵測記錄到資料庫"""
@@ -547,7 +591,7 @@ async def root():
     return {
         "message": "吸菸監控系統 API v2.0",
         "version": "2.0",
-        "features": ["多用戶支援", "多攝影機管理", "JWT 認證", "MySQL 資料庫"],
+        "features": ["多用戶支援", "多攝影機管理", "JWT 認證", "MySQL 資料庫", "15秒警報冷卻機制"],
         "endpoints": {
             "auth": "/api/auth/*",
             "cameras": "/api/cameras",

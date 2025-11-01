@@ -636,11 +636,18 @@
                 }
                 
                 // 更新信心度
+                // if (detectionData.max_confidence !== undefined) {
+                //     totalConfidence += detectionData.max_confidence;
+                //     const avgConf = (totalConfidence / frameCount * 100).toFixed(1);
+                //     document.getElementById('avgConfidence').textContent = avgConf + '%';
+                // }
+                const alpha = 0.2; // 平滑係數 0~1
                 if (detectionData.max_confidence !== undefined) {
-                    totalConfidence += detectionData.max_confidence;
-                    const avgConf = (totalConfidence / frameCount * 100).toFixed(1);
-                    document.getElementById('avgConfidence').textContent = avgConf + '%';
+                    const confPercent = detectionData.max_confidence * 100;
+                    avgConfidence = avgConfidence ? (alpha * confPercent + (1-alpha) * avgConfidence) : confPercent;
+                    document.getElementById('avgConfidence').textContent = avgConfidence.toFixed(1) + '%';
                 }
+
                 
             } catch (error) {
                 console.error('❌ 錯誤:', error);

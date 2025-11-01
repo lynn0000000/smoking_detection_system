@@ -179,6 +179,23 @@
             </div>
         </div>
     </div>
+    <!-- 截圖預覽 Modal -->
+    <div class="modal fade" id="screenshotModal" tabindex="-1" aria-labelledby="screenshotModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title" id="screenshotModalLabel">截圖預覽</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body text-center">
+            <img id="screenshotImage" src="" alt="Screenshot" style="max-width:100%; max-height:70vh; border-radius:8px; border:1px solid #dee2e6; box-shadow:0 4px 8px rgba(0,0,0,0.1);" />
+        </div>
+        <div class="modal-footer justify-content-center">
+            <a id="downloadScreenshot" href="#" download="" class="btn btn-primary">下載圖片</a>
+        </div>
+        </div>
+    </div>
+    </div>
 
     <script>
         const API_URL = 'http://localhost:8000';
@@ -290,11 +307,61 @@
             `).join('');
         }
         
-        function viewScreenshot(path) {
-            filepath_fixed = path.replace("\x0b", "v")
-            // print(filepath_fixed)
-            alert('截圖查看功能開發中...\n路徑: ' + filepath_fixed);
-        }
+
+        //不能使用滑鼠縮放照片
+        // function viewScreenshot(filename) {
+        //     if (!filename) return;
+
+        //     const url = `/api/screenshots/${encodeURIComponent(filename)}`;
+
+        //     // 設定 Modal 的圖片
+        //     const img = document.getElementById('screenshotImage');
+        //     img.src = url;
+
+        //     // 設定下載連結
+        //     const downloadLink = document.getElementById('downloadScreenshot');
+        //     downloadLink.href = url;
+        //     downloadLink.download = filename;
+
+        //     // 顯示 Modal
+        //     const screenshotModal = new bootstrap.Modal(document.getElementById('screenshotModal'));
+        //     screenshotModal.show();
+        // }
+
+
+            function viewScreenshot(filename) {
+        if (!filename) return;
+
+        const url = `/api/screenshots/${encodeURIComponent(filename)}`;
+
+        // 設定 Modal 的圖片
+        const img = document.getElementById('screenshotImage');
+        img.src = url;
+
+        // 初始化縮放比例
+        img.style.transform = "scale(1)";
+        let scale = 1;
+
+        // 監聽滾輪事件
+        img.onwheel = function(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1; // 向上滾放大，向下滾縮小
+            scale = Math.min(Math.max(0.5, scale + delta), 3); // 限制縮放範圍 0.5x ~ 3x
+            img.style.transform = `scale(${scale})`;
+        };
+
+        // 設定下載連結
+        const downloadLink = document.getElementById('downloadScreenshot');
+        downloadLink.href = url;
+        downloadLink.download = filename;
+
+        // 顯示 Modal
+        const screenshotModal = new bootstrap.Modal(document.getElementById('screenshotModal'));
+        screenshotModal.show();
+    }
+
+
+
 
         
         function logout() {
