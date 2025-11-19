@@ -3,878 +3,425 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>違規記錄 - 吸菸監控系統</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
-        .header {
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-        }
-
-        .header h1 {
-            color: #2d3748;
-            font-size: 2rem;
-            margin-bottom: 10px;
-        }
-
-        .header p {
-            color: #718096;
-            font-size: 1rem;
-        }
-
-        .filters {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-
-        .filter-group {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-
-        .filter-group label {
-            color: #4a5568;
-            font-size: 0.875rem;
-            font-weight: 600;
-        }
-
-        .filter-group select,
-        .filter-group input {
-            padding: 8px 12px;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            font-size: 0.875rem;
-            background: white;
-            color: #2d3748;
-            min-width: 150px;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.875rem;
-            font-weight: 600;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        .btn-secondary {
-            background: #e2e8f0;
-            color: #4a5568;
-        }
-
-        .btn-secondary:hover {
-            background: #cbd5e0;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-        }
-
-        .violations-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 20px;
-        }
-
-        .violation-card {
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s, box-shadow 0.3s;
-        }
-
-        .violation-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
-        }
-
-        .violation-image {
-            position: relative;
-            width: 100%;
-            height: 200px;
-            background: #f7fafc;
-            cursor: pointer;
-            overflow: hidden;
-        }
-
-        .violation-image img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: transform 0.3s;
-        }
-
-        .violation-image:hover img {
-            transform: scale(1.05);
-        }
-
-        .no-image {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: #a0aec0;
-            font-size: 0.875rem;
-        }
-
-        .violation-status {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(239, 68, 68, 0.9);
-            color: white;
-            padding: 5px 10px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .violation-details {
-            padding: 20px;
-        }
-
-        .violation-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: start;
-            margin-bottom: 15px;
-        }
-
-        .violation-title {
-            color: #2d3748;
-            font-size: 1.125rem;
-            font-weight: 600;
-        }
-
-        .violation-time {
-            color: #718096;
-            font-size: 0.875rem;
-        }
-
-        .violation-info {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
-        .info-item {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            color: #4a5568;
-            font-size: 0.875rem;
-        }
-
-        .info-item svg {
-            width: 16px;
-            height: 16px;
-            opacity: 0.6;
-        }
-
-        .violation-actions {
-            display: flex;
-            gap: 10px;
-            padding-top: 15px;
-            border-top: 1px solid #e2e8f0;
-        }
-
-        .action-btn {
-            flex: 1;
-            padding: 8px 12px;
-            background: #f7fafc;
-            color: #4a5568;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.875rem;
-            font-weight: 500;
-            transition: all 0.2s;
-            text-align: center;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 5px;
-        }
-
-        .action-btn:hover {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-color: transparent;
-        }
-
-        .action-btn svg {
-            width: 16px;
-            height: 16px;
-        }
-
-        /* 圖片預覽 Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            z-index: 1000;
-            animation: fadeIn 0.3s;
-        }
-
-        .modal.active {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-content {
-            position: relative;
-            max-width: 90%;
-            max-height: 90%;
-            animation: zoomIn 0.3s;
-        }
-
-        .modal-content img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-        }
-
-        .modal-close {
-            position: absolute;
-            top: 20px;
-            right: 40px;
-            color: white;
-            font-size: 40px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: color 0.3s;
-        }
-
-        .modal-close:hover {
-            color: #667eea;
-        }
-
-        .modal-nav {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            color: white;
-            font-size: 30px;
-            cursor: pointer;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.5);
-            border-radius: 5px;
-            transition: background 0.3s;
-        }
-
-        .modal-nav:hover {
-            background: rgba(102, 126, 234, 0.8);
-        }
-
-        .modal-prev {
-            left: 20px;
-        }
-
-        .modal-next {
-            right: 20px;
-        }
-
-        .modal-info {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 5px;
-            text-align: center;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        @keyframes zoomIn {
-            from {
-                opacity: 0;
-                transform: scale(0.3);
-            }
-            to {
-                opacity: 1;
-                transform: scale(1);
-            }
-        }
-
-        .loading {
-            text-align: center;
-            padding: 50px;
-            color: white;
-            font-size: 1.25rem;
-        }
-
-        .error {
-            background: #fed7d7;
-            color: #c53030;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-
-        .no-data {
-            background: white;
-            border-radius: 12px;
-            padding: 50px;
-            text-align: center;
-            color: #718096;
-        }
-
-        .stats-bar {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 20px;
-        }
-
-        .stat-item {
-            text-align: center;
-        }
-
-        .stat-value {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #667eea;
-        }
-
-        .stat-label {
-            color: #718096;
-            font-size: 0.875rem;
-            margin-top: 5px;
-        }
+    <title>偵測記錄 - 吸菸監控系統</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="./css/violations.css">
+    <style>   
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1>🚭 違規記錄管理</h1>
-            <p>查看並管理所有吸菸違規偵測記錄</p>
-        </div>
+    <div class="toggle-btn" onclick="toggleSidebar()">
+    <i class="bi bi-list"></i>
+</div>
 
-        <!-- 統計資訊 -->
-        <div class="stats-bar" id="statsBar">
-            <div class="stat-item">
-                <div class="stat-value" id="totalCount">0</div>
-                <div class="stat-label">總違規次數</div>
+    <!-- 側邊欄 -->
+    <div class="sidebar">
+        <div class="logo">
+            <i class="bi bi-camera-video-off"></i>
+            <h5 class="mt-2 logo-text">吸菸監控系統</h5>
+        </div>
+        
+        <nav class="nav flex-column">
+            <a class="nav-link" href="dashboard.html">
+                <i class="bi bi-speedometer2"></i> 儀表板
+            </a>
+            <a class="nav-link" href="cameras.html">
+                <i class="bi bi-camera"></i> 攝影機管理
+            </a>
+            <a class="nav-link" href="monitor.html">
+                <i class="bi bi-display"></i> 即時監控
+            </a>
+            <a class="nav-link active" href="detections.html">
+                <i class="bi bi-list-ul"></i> 偵測記錄
+            </a>
+            <a class="nav-link" href="violations.html">
+                <i class="bi bi-pen"></i>違規記錄管理
+            </a>
+            <a class="nav-link" href="settings.html">
+                <i class="bi bi-gear"></i> 系統設定
+            </a>
+            <a class="nav-link" href="#" onclick="logout()">
+                <i class="bi bi-box-arrow-right"></i> 登出
+            </a>
+        </nav>
+    </div>
+    
+    <!-- 主要內容 -->
+    <div class="main-content">
+        <h2 class="mb-4"><i class="bi bi-list-ul"></i> 偵測記錄</h2>
+        
+        <!-- 篩選區 -->
+        <div class="filter-section">
+            <div class="row g-3">
+                <div class="col-md-3">
+            <label class="form-label">開始日期</label>
+            <input type="date" class="form-control" id="filterStartDate" onchange="loadDetections()">
             </div>
-            <div class="stat-item">
-                <div class="stat-value" id="todayCount">0</div>
-                <div class="stat-label">今日違規</div>
+
+            <div class="col-md-3">
+                <label class="form-label">結束日期</label>
+                <input type="date" class="form-control" id="filterEndDate" onchange="loadDetections()">
             </div>
-            <div class="stat-item">
-                <div class="stat-value" id="cameraCount">0</div>
-                <div class="stat-label">攝影機數量</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value" id="avgConfidence">0%</div>
-                <div class="stat-label">平均信心度</div>
+
+                <div class="col-md-4">
+                    <label class="form-label">攝影機</label>
+                    <select class="form-select" id="filterCamera" onchange="loadDetections()">
+                        <option value="">全部攝影機</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-3">
+                    <label class="form-label">顯示數量</label>
+                    <select class="form-select" id="filterLimit" onchange="loadDetections()">
+                        <option value="20">20 筆</option>
+                        <option value="50" selected>50 筆</option>
+                        <option value="100">100 筆</option>
+                        <option value="200">200 筆</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-3">
+                    <label class="form-label">狀態</label>
+                    <select class="form-select" id="filterStatus">
+                        <option value="all">全部</option>
+                        <option value="smoking">僅顯示吸菸</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-2 d-flex align-items-end">
+                    
+                    <div class="d-flex align-items-center gap-2">
+                        <button class="btn btn-primary flex-fill text-nowrap" style="font-size: 16px; padding: 0.5rem 1rem;" onclick="loadDetections()">
+                            <i class="bi bi-search"></i> 查詢
+                        </button>
+
+                        <button class="btn btn-success flex-fill text-nowrap" style="font-size: 16px; padding: 0.5rem 1rem;" onclick="exportExcel()">
+                            <i class="bi bi-download"></i> 匯出報表(.xlsx)
+                        </button>
+                    </div>
+
+
+                </div>
             </div>
         </div>
-
-        <!-- Filters -->
-        <div class="filters">
-            <div class="filter-group">
-                <label>攝影機</label>
-                <select id="cameraFilter">
-                    <option value="">全部攝影機</option>
-                </select>
+        
+        <!-- 記錄表格 -->
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>時間</th>
+                                <th>攝影機</th>
+                                <th>位置</th>
+                                <th>偵測到人</th>
+                                <th>偵測到香菸</th>
+                                <th>信心度</th>
+                                <th>狀態</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detectionsTable">
+                            <tr>
+                                <td colspan="9" class="text-center text-muted">載入中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div id="noData" class="text-center py-5" style="display: none;">
+                    <i class="bi bi-inbox" style="font-size: 60px; color: #ccc;"></i>
+                    <p class="text-muted mt-3">目前沒有偵測記錄</p>
+                </div>
             </div>
-            <div class="filter-group">
-                <label>開始日期</label>
-                <input type="date" id="startDate">
-            </div>
-            <div class="filter-group">
-                <label>結束日期</label>
-                <input type="date" id="endDate">
-            </div>
-            <button class="btn" onclick="applyFilters()">套用篩選</button>
-            <button class="btn btn-secondary" onclick="resetFilters()">重置</button>
-            <button class="btn" onclick="exportData()">匯出報表</button>
-        </div>
-
-        <!-- Violations Grid -->
-        <div id="violationsContainer">
-            <div class="loading">載入中...</div>
         </div>
     </div>
-
-    <!-- Image Preview Modal -->
-    <div class="modal" id="imageModal">
-        <span class="modal-close" onclick="closeModal()">&times;</span>
-        <span class="modal-nav modal-prev" onclick="prevImage()">&#10094;</span>
-        <span class="modal-nav modal-next" onclick="nextImage()">&#10095;</span>
+    <!-- 截圖預覽 Modal -->
+    <div class="modal fade" id="screenshotModal" tabindex="-1" aria-labelledby="screenshotModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
-            <img id="modalImage" src="" alt="違規截圖">
+        <div class="modal-header">
+            <h5 class="modal-title" id="screenshotModalLabel">截圖預覽</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-        <div class="modal-info" id="modalInfo"></div>
+        <div class="modal-body text-center">
+            <img id="screenshotImage" src="" alt="Screenshot" style="max-width:100%; max-height:70vh; border-radius:8px; border:1px solid #dee2e6; box-shadow:0 4px 8px rgba(0,0,0,0.1);" />
+        </div>
+        <div class="modal-footer justify-content-center">
+            <a id="downloadScreenshot" href="#" download="" class="btn btn-primary">下載圖片</a>
+        </div>
+        </div>
+    </div>
     </div>
 
     <script>
-        // 設定 API 基礎路徑
-        const API_BASE = window.location.origin;
-        let violations = [];
-        let currentImageIndex = 0;
-        let authToken = localStorage.getItem('authToken') || '';
-
-        // 初始化
-        document.addEventListener('DOMContentLoaded', () => {
-            initializePage();
-            loadViolations();
-            loadStatistics();
-            loadCameras();
-            
-            // 設定日期預設值
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('endDate').value = today;
-            const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-            document.getElementById('startDate').value = lastWeek;
-        });
-
-        // 初始化頁面
-        function initializePage() {
-            // 檢查認證
-            if (!authToken) {
-                // 如果沒有 token，顯示登入提示
-                document.getElementById('violationsContainer').innerHTML = `
-                    <div class="no-data">
-                        <h2>請先登入</h2>
-                        <p>請先登入系統以查看違規記錄</p>
-                        <button class="btn" onclick="window.location.href='/login'">前往登入</button>
-                    </div>
-                `;
-                return false;
-            }
-            return true;
+        const API_URL = 'http://localhost:8000';
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        
+        if (!token) {
+            window.location.href = 'login.html';
         }
-
-        // 載入違規記錄
-        async function loadViolations() {
-            if (!authToken) return;
-
-            try {
-                const response = await fetch(`${API_BASE}/api/detections?limit=100`, {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`
-                    }
-                });
-
-                if (response.status === 401) {
-                    // Token 過期或無效
-                    localStorage.removeItem('authToken');
-                    initializePage();
-                    return;
-                }
-
-                if (!response.ok) throw new Error('載入失敗');
-
-                violations = await response.json();
-                displayViolations(violations);
-            } catch (error) {
-                console.error('載入違規記錄失敗:', error);
-                // 使用測試資料
-                violations = generateTestData();
-                displayViolations(violations);
-            }
-        }
-
-        // 產生測試資料（開發用）
-        function generateTestData() {
-            const cameras = ['大門入口', '吸菸區', '停車場', '後門'];
-            const locations = ['一樓', '二樓', '戶外', '地下室'];
-            const testData = [];
-            
-            for (let i = 0; i < 12; i++) {
-                const date = new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000);
-                testData.push({
-                    id: i + 1,
-                    timestamp: date.toISOString(),
-                    camera_name: cameras[Math.floor(Math.random() * cameras.length)],
-                    location: locations[Math.floor(Math.random() * locations.length)],
-                    has_person: true,
-                    has_cigarette: true,
-                    is_smoking: true,
-                    confidence: 0.75 + Math.random() * 0.2,
-                    screenshot_path: Math.random() > 0.3 ? `screenshots/violation_${i + 1}_${date.getTime()}.jpg` : null
-                });
-            }
-            return testData;
-        }
-
-        // 顯示違規記錄
-        function displayViolations(data) {
-            const container = document.getElementById('violationsContainer');
-            
-            if (data.length === 0) {
-                container.innerHTML = `
-                    <div class="no-data">
-                        <h2>🎉 沒有違規記錄</h2>
-                        <p>目前沒有偵測到任何吸菸違規行為</p>
-                    </div>
-                `;
-                return;
-            }
-
-            const grid = document.createElement('div');
-            grid.className = 'violations-grid';
-            
-            data.forEach((violation, index) => {
-                const card = createViolationCard(violation, index);
-                grid.appendChild(card);
-            });
-            
-            container.innerHTML = '';
-            container.appendChild(grid);
-        }
-
-        // 建立違規卡片
-        function createViolationCard(violation, index) {
-            const card = document.createElement('div');
-            card.className = 'violation-card';
-            
-            const date = new Date(violation.timestamp);
-            const formattedDate = date.toLocaleString('zh-TW');
-            const confidencePercent = (violation.confidence * 100).toFixed(1);
-            
-            card.innerHTML = `
-                <div class="violation-image" onclick="openModal(${index})">
-                    ${violation.screenshot_path ? 
-                        `<img src="${API_BASE}/api/${violation.screenshot_path}" alt="違規截圖" onerror="this.parentElement.innerHTML='<div class=\\'no-image\\'>無法載入圖片</div>'">
-                         <div class="violation-status">違規偵測</div>` :
-                        `<div class="no-image">
-                            <svg width="48" height="48" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
-                            </svg>
-                            <span style="margin-left: 10px;">無截圖</span>
-                        </div>`
-                    }
-                </div>
-                
-                <div class="violation-details">
-                    <div class="violation-header">
-                        <div>
-                            <div class="violation-title">${violation.camera_name}</div>
-                            <div class="violation-time">${formattedDate}</div>
-                        </div>
-                    </div>
-                    
-                    <div class="violation-info">
-                        <div class="info-item">
-                            <svg fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
-                            </svg>
-                            ${violation.location || '未設定位置'}
-                        </div>
-                        <div class="info-item">
-                            <svg fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/>
-                            </svg>
-                            信心度: ${confidencePercent}%
-                        </div>
-                    </div>
-                    
-                    <div class="violation-actions">
-                        ${violation.screenshot_path ? 
-                            `<button class="action-btn" onclick="viewFullImage(${index})">
-                                <svg fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
-                                </svg>
-                                預覽
-                            </button>
-                            <button class="action-btn" onclick="downloadImage('${violation.screenshot_path}', '${violation.camera_name}_${date.getTime()}.jpg')">
-                                <svg fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
-                                </svg>
-                                下載
-                            </button>` :
-                            `<button class="action-btn" disabled style="cursor: not-allowed; opacity: 0.5;">
-                                無截圖可用
-                            </button>`
-                        }
-                    </div>
-                </div>
-            `;
-            
-            return card;
-        }
-
-        // 開啟圖片預覽
-        function openModal(index) {
-            const violation = violations[index];
-            if (!violation.screenshot_path) {
-                alert('此記錄沒有截圖');
-                return;
-            }
-            
-            currentImageIndex = index;
-            const modal = document.getElementById('imageModal');
-            const modalImg = document.getElementById('modalImage');
-            const modalInfo = document.getElementById('modalInfo');
-            
-            modalImg.src = `${API_BASE}/api/${violation.screenshot_path}`;
-            modalInfo.textContent = `${violation.camera_name} - ${new Date(violation.timestamp).toLocaleString('zh-TW')}`;
-            
-            modal.classList.add('active');
-            document.body.style.overflow = 'hidden';
-        }
-
-        // 查看完整圖片
-        function viewFullImage(index) {
-            openModal(index);
-        }
-
-        // 關閉預覽
-        function closeModal() {
-            const modal = document.getElementById('imageModal');
-            modal.classList.remove('active');
-            document.body.style.overflow = 'auto';
-        }
-
-        // 上一張圖片
-        function prevImage() {
-            let newIndex = currentImageIndex - 1;
-            while (newIndex >= 0 && !violations[newIndex].screenshot_path) {
-                newIndex--;
-            }
-            if (newIndex >= 0) {
-                openModal(newIndex);
-            }
-        }
-
-        // 下一張圖片
-        function nextImage() {
-            let newIndex = currentImageIndex + 1;
-            while (newIndex < violations.length && !violations[newIndex].screenshot_path) {
-                newIndex++;
-            }
-            if (newIndex < violations.length) {
-                openModal(newIndex);
-            }
-        }
-
-        // 下載圖片
-        async function downloadImage(path, filename) {
-            try {
-                const response = await fetch(`${API_BASE}/api/${path}`, {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`
-                    }
-                });
-                
-                if (!response.ok) throw new Error('下載失敗');
-                
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-            } catch (error) {
-                alert('下載失敗：' + error.message);
-            }
-        }
-
-        // 載入統計資料
-        async function loadStatistics() {
-            try {
-                const response = await fetch(`${API_BASE}/api/statistics`, {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`
-                    }
-                });
-                
-                if (response.ok) {
-                    const stats = await response.json();
-                    document.getElementById('totalCount').textContent = stats.total_detections || 0;
-                    document.getElementById('todayCount').textContent = stats.today_detections || 0;
-                    document.getElementById('cameraCount').textContent = stats.total_cameras || 0;
-                } else {
-                    // 使用測試資料
-                    document.getElementById('totalCount').textContent = violations.length;
-                    document.getElementById('todayCount').textContent = Math.floor(violations.length / 3);
-                    document.getElementById('cameraCount').textContent = 4;
-                }
-                
-                // 計算平均信心度
-                if (violations.length > 0) {
-                    const avgConf = violations.reduce((sum, v) => sum + v.confidence, 0) / violations.length;
-                    document.getElementById('avgConfidence').textContent = (avgConf * 100).toFixed(0) + '%';
-                }
-            } catch (error) {
-                console.error('載入統計資料失敗:', error);
-            }
-        }
-
-        // 載入攝影機列表
+        
+        // 載入攝影機列表(用於篩選)
         async function loadCameras() {
             try {
-                const response = await fetch(`${API_BASE}/api/cameras`, {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`
-                    }
+                const response = await fetch(`${API_URL}/api/cameras`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
                 
-                if (response.ok) {
-                    const cameras = await response.json();
-                    const select = document.getElementById('cameraFilter');
-                    cameras.forEach(camera => {
-                        const option = document.createElement('option');
-                        option.value = camera.id;
-                        option.textContent = camera.camera_name;
-                        select.appendChild(option);
-                    });
-                }
+                const cameras = await response.json();
+                const select = document.getElementById('filterCamera');
+                
+                cameras.forEach(camera => {
+                    const option = document.createElement('option');
+                    option.value = camera.id;
+                    option.textContent = camera.camera_name;
+                    select.appendChild(option);
+                });
             } catch (error) {
-                console.error('載入攝影機列表失敗:', error);
+                console.error('Error loading cameras:', error);
             }
         }
-
-        // 套用篩選
-        function applyFilters() {
-            const cameraId = document.getElementById('cameraFilter').value;
-            const startDate = document.getElementById('startDate').value;
-            const endDate = document.getElementById('endDate').value;
+        
+        // 載入偵測記錄
+        async function loadDetections() {
+            const cameraId = document.getElementById('filterCamera').value;
+            const limit = document.getElementById('filterLimit').value;
+            const status = document.getElementById('filterStatus').value;
             
-            let filtered = [...violations];
-            
+            let url = `${API_URL}/api/detections?limit=${limit}`;
             if (cameraId) {
-                filtered = filtered.filter(v => v.camera_id == cameraId);
+                url += `&camera_id=${cameraId}`;
             }
-            
+            // 取得日期
+            const startDate = document.getElementById('filterStartDate').value;
+            const endDate = document.getElementById('filterEndDate').value;
+
+            // 加入到 URL
             if (startDate) {
-                const start = new Date(startDate);
-                filtered = filtered.filter(v => new Date(v.timestamp) >= start);
+                url += `&start_date=${startDate}`;
             }
-            
             if (endDate) {
-                const end = new Date(endDate + 'T23:59:59');
-                filtered = filtered.filter(v => new Date(v.timestamp) <= end);
+                url += `&end_date=${endDate}`;
             }
-            
-            displayViolations(filtered);
-        }
-
-        // 重置篩選
-        function resetFilters() {
-            document.getElementById('cameraFilter').value = '';
-            document.getElementById('startDate').value = '';
-            document.getElementById('endDate').value = '';
-            displayViolations(violations);
-        }
-
-        // 匯出資料
-        function exportData() {
-            const csvContent = generateCSV(violations);
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            link.setAttribute('href', url);
-            link.setAttribute('download', `violations_${new Date().getTime()}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        // 產生 CSV
-        function generateCSV(data) {
-            const headers = ['ID', '時間', '攝影機', '位置', '偵測到人', '偵測到香菸', '吸菸中', '信心度', '截圖路徑'];
-            const rows = data.map(v => [
-                v.id,
-                new Date(v.timestamp).toLocaleString('zh-TW'),
-                v.camera_name,
-                v.location || '',
-                v.has_person ? '是' : '否',
-                v.has_cigarette ? '是' : '否',
-                v.is_smoking ? '是' : '否',
-                (v.confidence * 100).toFixed(1) + '%',
-                v.screenshot_path || '無'
-            ]);
-            
-            const csvContent = [headers, ...rows]
-                .map(row => row.map(cell => `"${cell}"`).join(','))
-                .join('\n');
-            
-            // 加入 BOM 以支援中文
-            return '\uFEFF' + csvContent;
-        }
-
-        // ESC 鍵關閉 modal
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                closeModal();
-            } else if (e.key === 'ArrowLeft') {
-                if (document.getElementById('imageModal').classList.contains('active')) {
-                    prevImage();
+            try {
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                let detections = await response.json();
+                
+                // 篩選狀態
+                if (status === 'smoking') {
+                    detections = detections.filter(d => d.is_smoking);
                 }
-            } else if (e.key === 'ArrowRight') {
-                if (document.getElementById('imageModal').classList.contains('active')) {
-                    nextImage();
-                }
+                
+                displayDetections(detections);
+            } catch (error) {
+                console.error('Error loading detections:', error);
             }
-        });
+        }
+        
+        function displayDetections(detections) {
+            const tbody = document.getElementById('detectionsTable');
+            const noData = document.getElementById('noData');
+            
+            if (detections.length === 0) {
+                tbody.innerHTML = '';
+                noData.style.display = 'block';
+                return;
+            }
+            
+            noData.style.display = 'none';
+            
+            tbody.innerHTML = detections.map(d => `
+                <tr>
+                    <td>${d.id}</td>
+                    <td>${new Date(d.timestamp).toLocaleString('zh-TW')}</td>
+                    <td><i class="bi bi-camera"></i> ${d.camera_name}</td>
+                    <td>${d.location || '-'}</td>
+                    <td>
+                        <span class="badge ${d.has_person ? 'bg-success' : 'bg-secondary'}">
+                            ${d.has_person ? '是' : '否'}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge ${d.has_cigarette ? 'bg-warning' : 'bg-secondary'}">
+                            ${d.has_cigarette ? '是' : '否'}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar ${d.confidence > 0.8 ? 'bg-success' : d.confidence > 0.6 ? 'bg-warning' : 'bg-danger'}" 
+                                 style="width: ${d.confidence * 100}%">
+                                ${(d.confidence * 100).toFixed(1)}%
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge ${d.is_smoking ? 'bg-danger' : 'bg-success'}">
+                            ${d.is_smoking ? '⚠️ 偵測到吸菸' : '✓ 正常'}
+                        </span>
+                    </td>
+                    <td>
+                        ${d.screenshot_path ? `
+                            <button class="btn btn-sm btn-outline-primary" onclick="viewScreenshot('${d.screenshot_path}')">
+                                <i class="bi bi-image"></i> 查看
+                            </button>
+                        ` : '-'}
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
 
-        // 點擊 modal 背景關閉
-        document.getElementById('imageModal').addEventListener('click', (e) => {
-            if (e.target === document.getElementById('imageModal')) {
-                closeModal();
+        //不能使用滑鼠縮放照片
+        // function viewScreenshot(filename) {
+        //     if (!filename) return;
+
+        //     const url = `/api/screenshots/${encodeURIComponent(filename)}`;
+
+        //     // 設定 Modal 的圖片
+        //     const img = document.getElementById('screenshotImage');
+        //     img.src = url;
+
+        //     // 設定下載連結
+        //     const downloadLink = document.getElementById('downloadScreenshot');
+        //     downloadLink.href = url;
+        //     downloadLink.download = filename;
+
+        //     // 顯示 Modal
+        //     const screenshotModal = new bootstrap.Modal(document.getElementById('screenshotModal'));
+        //     screenshotModal.show();
+        // }
+
+
+            function viewScreenshot(filename) {
+        if (!filename) return;
+
+        const url = `/api/screenshots/${encodeURIComponent(filename)}`;
+
+        // 設定 Modal 的圖片
+        const img = document.getElementById('screenshotImage');
+        img.src = url;
+
+        // 初始化縮放比例
+        img.style.transform = "scale(1)";
+        let scale = 1;
+
+        // 監聽滾輪事件
+        img.onwheel = function(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1; // 向上滾放大，向下滾縮小
+            scale = Math.min(Math.max(0.5, scale + delta), 3); // 限制縮放範圍 0.5x ~ 3x
+            img.style.transform = `scale(${scale})`;
+        };
+
+        // 設定下載連結
+        const downloadLink = document.getElementById('downloadScreenshot');
+        downloadLink.href = url;
+        downloadLink.download = filename;
+
+        // 顯示 Modal
+        const screenshotModal = new bootstrap.Modal(document.getElementById('screenshotModal'));
+        screenshotModal.show();
+    }
+        function logout() {
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = 'login.html';
+        }
+        //動態導覽列
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const mainContent = document.querySelector('.main-content');
+            const toggleBtn = document.querySelector('.toggle-btn');
+
+            sidebar.classList.toggle('collapsed');
+            mainContent.classList.toggle('collapsed');
+            toggleBtn.classList.toggle('collapsed');
+        }
+        //匯出報表(.xlsx)
+        function exportExcel() {
+            const tbody = document.getElementById('detectionsTable');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+
+            if (rows.length === 0) {
+                alert('目前沒有資料可匯出');
+                return;
             }
-        });
+
+            const data = [];
+            // 加入表頭
+            data.push(["ID","時間","攝影機","位置","偵測到人","偵測到香菸","信心度","狀態","操作"]);
+
+            rows.forEach(row => {
+                const cells = Array.from(row.querySelectorAll('td'));
+                if (cells.length === 1 && cells[0].colSpan === 9) return; // 跳過 "載入中..." 或沒有資料
+
+                const rowData = cells.map((cell, idx) => {
+                    if (idx === 8) { // 操作欄，只取圖片路徑
+                        const btn = cell.querySelector('button');
+                        return btn ? btn.getAttribute('onclick').match(/'(.+?)'/)[1] : '';
+                    }
+
+                    if (idx === 6) { // 信心度，抓百分比
+                        const progress = cell.querySelector('.progress-bar');
+                        return progress ? progress.textContent.trim() : cell.textContent.trim();
+                    }
+
+                    if (idx === 4 || idx === 5 || idx === 7) { // Badge 狀態欄
+                        return cell.textContent.trim();
+                    }
+
+                    return cell.textContent.trim();
+                });
+
+                data.push(rowData);
+            });
+
+            // 建立工作表
+            const ws = XLSX.utils.aoa_to_sheet(data);
+
+            // 套簡單樣式：信心度顏色 & 狀態顏色
+            rows.forEach((row, i) => {
+                const cells = Array.from(row.querySelectorAll('td'));
+                if (cells.length === 1 && cells[0].colSpan === 9) return;
+                // 信心度 (欄位 7)
+                const progress = cells[6].querySelector('.progress-bar');
+                if (progress) {
+                    const color = progress.classList.contains('bg-success') ? 'green' :
+                                progress.classList.contains('bg-warning') ? 'orange' :
+                                'red';
+                    const cellRef = XLSX.utils.encode_cell({r: i+1, c:6});
+                    if (!ws[cellRef]) ws[cellRef] = { t:'s', v: data[i+1][6] };
+                    ws[cellRef].s = { fill: { fgColor: { rgb: color.replace('#','') } } };
+                }
+                // 狀態 (欄位 8)
+                const status = cells[7].querySelector('.badge');
+                if (status) {
+                    const color = status.classList.contains('bg-success') ? 'green' : 'red';
+                    const cellRef = XLSX.utils.encode_cell({r: i+1, c:7});
+                    if (!ws[cellRef]) ws[cellRef] = { t:'s', v: data[i+1][7] };
+                    ws[cellRef].s = { fill: { fgColor: { rgb: color.replace('#','') } } };
+                }
+            });
+
+            // 建立工作簿並匯出
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "偵測紀錄");
+            XLSX.writeFile(wb, `detections_report_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        // 初始載入
+        loadCameras();
+        loadDetections();
+
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
