@@ -9,6 +9,10 @@
     <link rel="stylesheet" href="./css/monitor.css">
 </head>
 <body>
+    <!--收縮側邊欄按鈕-->
+    <div class="toggle-btn" onclick="toggleSidebar()">
+        <i class="bi bi-list"></i>
+    </div>
     <!-- 側邊欄 -->
     <div class="sidebar">
         <div class="logo">
@@ -593,21 +597,18 @@
             window.location.href = 'login.html';
         }
         
+         //動態導覽列
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const mainContent = document.querySelector('.main-content');
+            const toggleBtn = document.querySelector('.toggle-btn');
+
+            sidebar.classList.toggle('collapsed');
+            mainContent.classList.toggle('collapsed');
+            toggleBtn.classList.toggle('collapsed');
+        }
         // 初始載入
         loadCameras();
-        
-        // 頁面關閉時停止監控
-        // window.addEventListener('beforeunload', () => {
-        //     stopMonitoring();
-        // });
-        // window.addEventListener('beforeunload', (e) => {
-        //     if (isMonitoring && !isNavigating) {
-        //         stopMonitoring();
-        //         e.preventDefault();
-        //         e.returnValue = '監控進行中';
-        //         return e.returnValue;
-        //     }
-        // });
         
         window.addEventListener('beforeunload', (e) => {
         if (isMonitoring) {

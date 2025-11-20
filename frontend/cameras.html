@@ -9,6 +9,10 @@
     <link rel="stylesheet" href="./css/cameras.css">
 </head>
 <body>
+    <!--收縮側邊欄按鈕-->
+    <div class="toggle-btn" onclick="toggleSidebar()">
+        <i class="bi bi-list"></i>
+    </div>
     <!-- 側邊欄 -->
     <div class="sidebar">
         <div class="logo">
@@ -284,7 +288,16 @@
             sessionStorage.clear();
             window.location.href = 'login.html';
         }
-        
+         //動態導覽列
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const mainContent = document.querySelector('.main-content');
+            const toggleBtn = document.querySelector('.toggle-btn');
+
+            sidebar.classList.toggle('collapsed');
+            mainContent.classList.toggle('collapsed');
+            toggleBtn.classList.toggle('collapsed');
+        }
         // 初始載入
         loadCameras();
     </script>

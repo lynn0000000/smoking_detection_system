@@ -299,36 +299,36 @@
         // }
 
 
-            function viewScreenshot(filename) {
-        if (!filename) return;
+        function viewScreenshot(filename) {
+            if (!filename) return;
 
-        const url = `/api/screenshots/${encodeURIComponent(filename)}`;
+            const url = `/api/screenshots/${encodeURIComponent(filename)}`;
 
-        // 設定 Modal 的圖片
-        const img = document.getElementById('screenshotImage');
-        img.src = url;
+            // 設定 Modal 的圖片
+            const img = document.getElementById('screenshotImage');
+            img.src = url;
 
-        // 初始化縮放比例
-        img.style.transform = "scale(1)";
-        let scale = 1;
+            // 初始化縮放比例
+            img.style.transform = "scale(1)";
+            let scale = 1;
 
-        // 監聽滾輪事件
-        img.onwheel = function(e) {
-            e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.1 : 0.1; // 向上滾放大，向下滾縮小
-            scale = Math.min(Math.max(0.5, scale + delta), 3); // 限制縮放範圍 0.5x ~ 3x
-            img.style.transform = `scale(${scale})`;
-        };
+            // 監聽滾輪事件
+            img.onwheel = function(e) {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? -0.1 : 0.1; // 向上滾放大，向下滾縮小
+                scale = Math.min(Math.max(0.5, scale + delta), 3); // 限制縮放範圍 0.5x ~ 3x
+                img.style.transform = `scale(${scale})`;
+            };
 
-        // 設定下載連結
-        const downloadLink = document.getElementById('downloadScreenshot');
-        downloadLink.href = url;
-        downloadLink.download = filename;
+            // 設定下載連結
+            const downloadLink = document.getElementById('downloadScreenshot');
+            downloadLink.href = url;
+            downloadLink.download = filename;
 
-        // 顯示 Modal
-        const screenshotModal = new bootstrap.Modal(document.getElementById('screenshotModal'));
-        screenshotModal.show();
-    }
+            // 顯示 Modal
+            const screenshotModal = new bootstrap.Modal(document.getElementById('screenshotModal'));
+            screenshotModal.show();
+        }
         function logout() {
             localStorage.clear();
             sessionStorage.clear();

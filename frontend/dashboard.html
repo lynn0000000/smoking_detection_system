@@ -11,6 +11,10 @@
     
 </head>
 <body>
+    <!--收縮側邊欄按鈕-->
+    <div class="toggle-btn" onclick="toggleSidebar()">
+        <i class="bi bi-list"></i>
+    </div>
     <!-- 側邊欄 -->
     <div class="sidebar">
         <div class="logo">
@@ -149,389 +153,298 @@
         document.getElementById('currentDate').textContent = 
             new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' });
         
-// 全域變數
+        // 全域變數
 
-// 檢查登入狀態
-if (!token) {
-    window.location.href = 'login.html';
-}
-
-// 載入資料
-async function loadData() {
-    try {
-        const headers = {
-            'Authorization': `Bearer ${token}`
-        };
-        
-        // 載入統計資料
-        const statsResponse = await fetch(`${API_URL}/api/statistics`, { headers });
-        const stats = await statsResponse.json();
-        
-        document.getElementById('totalCameras').textContent = stats.total_cameras;
-        document.getElementById('onlineCameras').textContent = stats.online_cameras;
-        document.getElementById('todayDetections').textContent = stats.today_detections;
-        document.getElementById('totalDetections').textContent = stats.total_detections;
-        
-        // 載入最近偵測記錄
-        const detectionsResponse = await fetch(`${API_URL}/api/detections?limit=5`, { headers });
-        const detections = await detectionsResponse.json();
-        
-        displayRecentDetections(detections);
-        
-        // 載入趨勢數據
-        const trendResponse = await fetch(`${API_URL}/api/detections/trend?days=7`, { headers });
-        const trendData = await trendResponse.json();
-        
-        // 初始化圖表
-        initCharts(stats, trendData);
-        
-    } catch (error) {
-        console.error('Error loading data:', error);
-        // 顯示錯誤訊息（如果 showAlert 函數存在）
-        if (typeof showAlert === 'function') {
-            showAlert('載入數據失敗，請稍後重試', 'danger');
+        // 檢查登入狀態
+        if (!token) {
+            window.location.href = 'login.html';
         }
-    }
-}
 
-// 顯示最近偵測記錄
-function displayRecentDetections(detections) {
-    const tbody = document.getElementById('recentDetections');
-    
-    if (!tbody) {
-        console.error('找不到 recentDetections 元素');
-        return;
-    }
-    
-    if (!detections || detections.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">目前沒有偵測記錄</td></tr>';
-        return;
-    }
-    
-    tbody.innerHTML = detections.map(d => `
-        <tr>
-            <td>${new Date(d.timestamp).toLocaleString('zh-TW')}</td>
-            <td>${d.camera_name || '未知'}</td>
-            <td>${d.location || '-'}</td>
-            <td>${(d.confidence * 100).toFixed(1)}%</td>
-            <td>
-                <span class="badge ${d.is_smoking ? 'bg-danger' : 'bg-success'}">
-                    ${d.is_smoking ? '偵測到吸菸' : '正常'}
-                </span>
-            </td>
-        </tr>
-    `).join('');
-}
-
-// 初始化圖表
-function initCharts(stats, trendData) {
-    // 偵測趨勢圖
-    const chartElement = document.getElementById('detectionChart');
-    if (!chartElement) {
-        console.error('找不到 detectionChart 元素');
-        return;
-    }
-    
-    const ctxLine = chartElement.getContext('2d');
-    
-    // 處理數據
-    let labels = [];
-    let totalCounts = [];
-    let smokingCounts = [];
-    
-    if (trendData && trendData.success) {
-        // 格式化日期標籤
-        labels = trendData.dates.map(dateStr => {
-            const date = new Date(dateStr);
-            const days = ['日', '一', '二', '三', '四', '五', '六'];
-            const month = date.getMonth() + 1;
-            const day = date.getDate();
-            const weekday = days[date.getDay()];
-            return `${month}/${day} (週${weekday})`;
-        });
-        
-        totalCounts = trendData.counts || [];
-        smokingCounts = trendData.smoking_counts || [];
-    } else {
-        // 使用預設數據（無資料時顯示過去7天）
-        const today = new Date();
-        for (let i = 6; i >= 0; i--) {
-            const date = new Date(today);
-            date.setDate(date.getDate() - i);
-            const days = ['日', '一', '二', '三', '四', '五', '六'];
-            const month = date.getMonth() + 1;
-            const day = date.getDate();
-            const weekday = days[date.getDay()];
-            labels.push(`${month}/${day} (週${weekday})`);
-            totalCounts.push(0);
-            smokingCounts.push(0);
-        }
-    }
-    
-    // 如果圖表已存在，先銷毀
-    if (detectionChart) {
-        detectionChart.destroy();
-    }
-    
-    // 建立新圖表
-    detectionChart = new Chart(ctxLine, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: '總偵測次數',
-                    data: totalCounts,
-                    borderColor: '#667eea',
-                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                    tension: 0.4,
-                    fill: true,
-                    pointBackgroundColor: '#667eea',
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2,
-                    pointRadius: 4,
-                    pointHoverRadius: 6
-                },
-                {
-                    label: '吸菸偵測',
-                    data: smokingCounts,
-                    borderColor: '#f56565',
-                    backgroundColor: 'rgba(245, 101, 101, 0.1)',
-                    tension: 0.4,
-                    fill: true,
-                    pointBackgroundColor: '#f56565',
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2,
-                    pointRadius: 4,
-                    pointHoverRadius: 6
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top',
-                    labels: {
-                        usePointStyle: true,
-                        padding: 15
-                    }
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    titleColor: '#fff',
-                    bodyColor: '#fff',
-                    borderColor: '#667eea',
-                    borderWidth: 1,
-                    titleFont: {
-                        size: 14
-                    },
-                    bodyFont: {
-                        size: 13
-                    },
-                    padding: 10,
-                    displayColors: true,
-                    callbacks: {
-                        title: function(tooltipItems) {
-                            const index = tooltipItems[0].dataIndex;
-                            if (trendData && trendData.dates && trendData.dates[index]) {
-                                const date = new Date(trendData.dates[index]);
-                                return date.toLocaleDateString('zh-TW', {
-                                    year: 'numeric',
-                                    month: 'long',
-                                    day: 'numeric',
-                                    weekday: 'long'
-                                });
-                            }
-                            return tooltipItems[0].label;
-                        },
-                        label: function(context) {
-                            let label = context.dataset.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            label += context.parsed.y + ' 次';
-                            return label;
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        stepSize: 1,
-                        callback: function(value) {
-                            if (Number.isInteger(value)) {
-                                return value + ' 次';
-                            }
-                        }
-                    },
-                    grid: {
-                        color: 'rgba(0, 0, 0, 0.05)',
-                        drawBorder: false
-                    }
-                },
-                x: {
-                    grid: {
-                        display: false,
-                        drawBorder: false
-                    },
-                    ticks: {
-                        maxRotation: 45,
-                        minRotation: 45
-                    }
+        // 載入資料
+        async function loadData() {
+            try {
+                const headers = {
+                    'Authorization': `Bearer ${token}`
+                };
+                
+                // 載入統計資料
+                const statsResponse = await fetch(`${API_URL}/api/statistics`, { headers });
+                const stats = await statsResponse.json();
+                
+                document.getElementById('totalCameras').textContent = stats.total_cameras;
+                document.getElementById('onlineCameras').textContent = stats.online_cameras;
+                document.getElementById('todayDetections').textContent = stats.today_detections;
+                document.getElementById('totalDetections').textContent = stats.total_detections;
+                
+                // 載入最近偵測記錄
+                const detectionsResponse = await fetch(`${API_URL}/api/detections?limit=5`, { headers });
+                const detections = await detectionsResponse.json();
+                
+                displayRecentDetections(detections);
+                
+                // 載入趨勢數據
+                const trendResponse = await fetch(`${API_URL}/api/detections/trend?days=7`, { headers });
+                const trendData = await trendResponse.json();
+                
+                // 初始化圖表
+                initCharts(stats, trendData);
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                // 顯示錯誤訊息（如果 showAlert 函數存在）
+                if (typeof showAlert === 'function') {
+                    showAlert('載入數據失敗，請稍後重試', 'danger');
                 }
             }
         }
-    });
-}
 
-// 顯示提示訊息（選擇性）
-function showAlert(message, type = 'info') {
-    // 建立提示訊息元素
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
-    alertDiv.style.zIndex = '9999';
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-    
-    document.body.appendChild(alertDiv);
-    
-    // 3秒後自動關閉
-    setTimeout(() => {
-        alertDiv.remove();
-    }, 3000);
-}
+        // 顯示最近偵測記錄
+        function displayRecentDetections(detections) {
+            const tbody = document.getElementById('recentDetections');
+            
+            if (!tbody) {
+                console.error('找不到 recentDetections 元素');
+                return;
+            }
+            
+            if (!detections || detections.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">目前沒有偵測記錄</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = detections.map(d => `
+                <tr>
+                    <td>${new Date(d.timestamp).toLocaleString('zh-TW')}</td>
+                    <td>${d.camera_name || '未知'}</td>
+                    <td>${d.location || '-'}</td>
+                    <td>${(d.confidence * 100).toFixed(1)}%</td>
+                    <td>
+                        <span class="badge ${d.is_smoking ? 'bg-danger' : 'bg-success'}">
+                            ${d.is_smoking ? '偵測到吸菸' : '正常'}
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+        }
 
-// 登出功能
-function logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('username');
-    window.location.href = 'login.html';
-}
+        // 初始化圖表
+        function initCharts(stats, trendData) {
+            // 偵測趨勢圖
+            const chartElement = document.getElementById('detectionChart');
+            if (!chartElement) {
+                console.error('找不到 detectionChart 元素');
+                return;
+            }
+            
+            const ctxLine = chartElement.getContext('2d');
+            
+            // 處理數據
+            let labels = [];
+            let totalCounts = [];
+            let smokingCounts = [];
+            
+            if (trendData && trendData.success) {
+                // 格式化日期標籤
+                labels = trendData.dates.map(dateStr => {
+                    const date = new Date(dateStr);
+                    const days = ['日', '一', '二', '三', '四', '五', '六'];
+                    const month = date.getMonth() + 1;
+                    const day = date.getDate();
+                    const weekday = days[date.getDay()];
+                    return `${month}/${day} (週${weekday})`;
+                });
+                
+                totalCounts = trendData.counts || [];
+                smokingCounts = trendData.smoking_counts || [];
+            } else {
+                // 使用預設數據（無資料時顯示過去7天）
+                const today = new Date();
+                for (let i = 6; i >= 0; i--) {
+                    const date = new Date(today);
+                    date.setDate(date.getDate() - i);
+                    const days = ['日', '一', '二', '三', '四', '五', '六'];
+                    const month = date.getMonth() + 1;
+                    const day = date.getDate();
+                    const weekday = days[date.getDay()];
+                    labels.push(`${month}/${day} (週${weekday})`);
+                    totalCounts.push(0);
+                    smokingCounts.push(0);
+                }
+            }
+            
+            // 如果圖表已存在，先銷毀
+            if (detectionChart) {
+                detectionChart.destroy();
+            }
+            
+            // 建立新圖表
+            detectionChart = new Chart(ctxLine, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '總偵測次數',
+                            data: totalCounts,
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            tension: 0.4,
+                            fill: true,
+                            pointBackgroundColor: '#667eea',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        },
+                        {
+                            label: '吸菸偵測',
+                            data: smokingCounts,
+                            borderColor: '#f56565',
+                            backgroundColor: 'rgba(245, 101, 101, 0.1)',
+                            tension: 0.4,
+                            fill: true,
+                            pointBackgroundColor: '#f56565',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 15
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            borderColor: '#667eea',
+                            borderWidth: 1,
+                            titleFont: {
+                                size: 14
+                            },
+                            bodyFont: {
+                                size: 13
+                            },
+                            padding: 10,
+                            displayColors: true,
+                            callbacks: {
+                                title: function(tooltipItems) {
+                                    const index = tooltipItems[0].dataIndex;
+                                    if (trendData && trendData.dates && trendData.dates[index]) {
+                                        const date = new Date(trendData.dates[index]);
+                                        return date.toLocaleDateString('zh-TW', {
+                                            year: 'numeric',
+                                            month: 'long',
+                                            day: 'numeric',
+                                            weekday: 'long'
+                                        });
+                                    }
+                                    return tooltipItems[0].label;
+                                },
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += context.parsed.y + ' 次';
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1,
+                                callback: function(value) {
+                                    if (Number.isInteger(value)) {
+                                        return value + ' 次';
+                                    }
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)',
+                                drawBorder: false
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        }
+                    }
+                }
+            });
+        }
 
-// 頁面載入時執行
-document.addEventListener('DOMContentLoaded', function() {
-    // 顯示用戶名稱
-    const username = localStorage.getItem('username');
-    const usernameElement = document.getElementById('username');
-    if (usernameElement && username) {
-        usernameElement.textContent = username;
-    }
-    
-    // 載入資料
-    loadData();
-    
-    // 設定自動更新（每60秒）
-    setInterval(loadData, 60000);
-});
+        // 顯示提示訊息（選擇性）
+        function showAlert(message, type = 'info') {
+            // 建立提示訊息元素
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+            alertDiv.style.zIndex = '9999';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            // 3秒後自動關閉
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 3000);
+        }
 
+        // 登出功能
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            window.location.href = 'login.html';
+        }
+
+        // 頁面載入時執行
+        document.addEventListener('DOMContentLoaded', function() {
+            // 顯示用戶名稱
+            const username = localStorage.getItem('username');
+            const usernameElement = document.getElementById('username');
+            if (usernameElement && username) {
+                usernameElement.textContent = username;
+            }
             
             // 載入資料
-        // async function loadData() {
-        //     try {
-        //         const headers = {
-        //             'Authorization': `Bearer ${token}`
-        //         };
-                
-        //         // 載入統計資料
-        //         const statsResponse = await fetch(`${API_URL}/api/statistics`, { headers });
-        //         const stats = await statsResponse.json();
-                
-        //         document.getElementById('totalCameras').textContent = stats.total_cameras;
-        //         document.getElementById('onlineCameras').textContent = stats.online_cameras;
-        //         document.getElementById('todayDetections').textContent = stats.today_detections;
-        //         document.getElementById('totalDetections').textContent = stats.total_detections;
-                
-        //         // 載入最近偵測記錄
-        //         const detectionsResponse = await fetch(`${API_URL}/api/detections?limit=5`, { headers });
-        //         const detections = await detectionsResponse.json();
-                
-        //         displayRecentDetections(detections);
-                
-        //         // 初始化圖表
-        //         initCharts(stats);
-                
-        //     } catch (error) {
-        //         console.error('Error loading data:', error);
-        //     }
-        // }
-        
-        // function displayRecentDetections(detections) {
-        //     const tbody = document.getElementById('recentDetections');
+            loadData();
             
-        //     if (detections.length === 0) {
-        //         tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">目前沒有偵測記錄</td></tr>';
-        //         return;
-        //     }
-            
-        //     tbody.innerHTML = detections.map(d => `
-        //         <tr>
-        //             <td>${new Date(d.timestamp).toLocaleString('zh-TW')}</td>
-        //             <td>${d.camera_name}</td>
-        //             <td>${d.location || '-'}</td>
-        //             <td>${(d.confidence * 100).toFixed(1)}%</td>
-        //             <td>
-        //                 <span class="badge ${d.is_smoking ? 'bg-danger' : 'bg-success'}">
-        //                     ${d.is_smoking ? '偵測到吸菸' : '正常'}
-        //                 </span>
-        //             </td>
-        //         </tr>
-        //     `).join('');
-        // }
-        
-        // function initCharts(stats) {
-        //     // 偵測趨勢圖
-        //     const ctxLine = document.getElementById('detectionChart').getContext('2d');
-        //     detectionChart = new Chart(ctxLine, {
-        //         type: 'line',
-        //         data: {
-        //             labels: ['週一', '週二', '週三', '週四', '週五', '週六', '週日'],
-        //             datasets: [{
-        //                 label: '偵測次數',
-        //                 data: [12, 19, 15, 25, 22, 18, 20],
-        //                 borderColor: '#667eea',
-        //                 backgroundColor: 'rgba(102, 126, 234, 0.1)',
-        //                 tension: 0.4
-        //             }]
-        //         },
-        //         options: {
-        //             responsive: true,
-        //             maintainAspectRatio: true
-        //         }
-        //     });
-            
-        //     // 攝影機狀態圖
-        //     const ctxPie = document.getElementById('cameraStatusChart').getContext('2d');
-        //     cameraStatusChart = new Chart(ctxPie, {
-        //         type: 'doughnut',
-        //         data: {
-        //             labels: ['線上', '離線'],
-        //             datasets: [{
-        //                 data: [stats.online_cameras, stats.total_cameras - stats.online_cameras],
-        //                 backgroundColor: ['#28a745', '#dc3545']
-        //             }]
-        //         },
-        //         options: {
-        //             responsive: true,
-        //             maintainAspectRatio: true
-        //         }
-        //     });
-        // }
-        
+            // 設定自動更新（每60秒）
+            setInterval(loadData, 60000);
+        });
+
+                    
+                
         function refreshData() {
             loadData();
         }
-        
+
         function logout() {
             localStorage.removeItem('token');
             localStorage.removeItem('username');
@@ -539,7 +452,16 @@ document.addEventListener('DOMContentLoaded', function() {
             sessionStorage.removeItem('username');
             window.location.href = 'login.html';
         }
-        
+        //動態導覽列
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const mainContent = document.querySelector('.main-content');
+            const toggleBtn = document.querySelector('.toggle-btn');
+
+            sidebar.classList.toggle('collapsed');
+            mainContent.classList.toggle('collapsed');
+            toggleBtn.classList.toggle('collapsed');
+        }
         // 初始載入
         loadData();
     </script>
