@@ -1,5 +1,5 @@
 body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(180deg, #000000 0%, #001441 50%, #1f36a0 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -38,7 +38,7 @@ body {
         }
         
         .btn-login {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(180deg, #000000 0%, #001441 50%, #1f36a0 100%);
             border: none;
             padding: 12px;
             font-weight: bold;
