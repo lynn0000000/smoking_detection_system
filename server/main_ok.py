@@ -48,6 +48,11 @@ app.add_middleware(
 # 全域變數
 model = None
 active_websockets = {}  # {camera_id: [websocket1, websocket2, ...]}
+# 全域變數
+last_detection_time = {}  # {camera_id: datetime}
+DETECTION_COOLDOWN = timedelta(seconds=10)  # 同一攝影機10秒內只記一次
+DETECTION_STABLE_FRAMES = 3  # 連續3幀偵測到才算真正吸菸
+smoking_frame_counter = {}  # {camera_id: 目前連續吸菸幀數}
 from fastapi.staticfiles import StaticFiles
 import os
 
@@ -106,11 +111,6 @@ def init_model():
         print(f"❌ 模型載入失敗: {e}")
 
 
-# def init_model():
-#     """初始化 YOLO 模型"""
-#     global model
-#     print("⚠️ AI 模型暫時停用")
-#     model = None
 
 @app.on_event("startup")
 async def startup_event():
@@ -284,19 +284,42 @@ async def delete_camera(
 
 # ==================== 偵測記錄 API ====================
 
+from datetime import datetime, timedelta
+from typing import Optional
+
 @app.get("/api/detections")
 async def get_detections(
     camera_id: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     limit: int = 50,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """取得偵測記錄"""
+    """取得偵測記錄（可依攝影機 & 日期區間篩選）"""
+
     query = db.query(Detection).filter(Detection.user_id == current_user.id)
     
+    # 攝影機篩選
     if camera_id:
         query = query.filter(Detection.camera_id == camera_id)
-    
+
+    # 日期處理（格式 YYYY-MM-DD）
+    if start_date:
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d")
+            query = query.filter(Detection.timestamp >= start)
+        except:
+            raise HTTPException(status_code=400, detail="start_date 格式錯誤，需為 YYYY-MM-DD")
+
+    if end_date:
+        try:
+            end = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            query = query.filter(Detection.timestamp < end)
+        except:
+            raise HTTPException(status_code=400, detail="end_date 格式錯誤，需為 YYYY-MM-DD")
+
+    # 排序 + 限制
     detections = query.order_by(Detection.timestamp.desc()).limit(limit).all()
     
     # 加入攝影機名稱
@@ -316,6 +339,7 @@ async def get_detections(
         })
     
     return result
+
 
 
 @app.get("/api/statistics")
@@ -351,6 +375,138 @@ async def get_statistics(
     }
 
 
+
+from datetime import datetime, timedelta
+from typing import Optional
+from collections import defaultdict
+
+@app.get("/api/detections/trend")
+async def get_detection_trend(
+    days: int = 7,  # 預設顯示7天
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """取得偵測趨勢數據"""
+    try:
+        # 計算日期範圍
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days-1)  # 包含今天
+        
+        # 查詢每天的偵測數量
+        # 使用 SQLAlchemy 的 func 來做日期分組
+        from sqlalchemy import func, cast, Date
+        
+        daily_counts = db.query(
+            cast(Detection.timestamp, Date).label('date'),
+            func.count(Detection.id).label('count')
+        ).filter(
+            Detection.user_id == current_user.id,
+            Detection.timestamp >= start_date,
+            Detection.timestamp <= end_date
+        ).group_by(
+            cast(Detection.timestamp, Date)
+        ).all()
+        
+        # 建立日期到數量的映射
+        date_count_map = {
+            count.date.strftime('%Y-%m-%d'): count.count 
+            for count in daily_counts
+        }
+        
+        # 生成連續的日期序列（包含沒有偵測的日期）
+        dates = []
+        counts = []
+        current = start_date.date()
+        end = end_date.date()
+        
+        while current <= end:
+            date_str = current.strftime('%Y-%m-%d')
+            dates.append(date_str)
+            counts.append(date_count_map.get(date_str, 0))
+            current += timedelta(days=1)
+        
+        # 如果需要，也可以加入吸菸偵測的統計
+        smoking_counts = db.query(
+            cast(Detection.timestamp, Date).label('date'),
+            func.count(Detection.id).label('count')
+        ).filter(
+            Detection.user_id == current_user.id,
+            Detection.timestamp >= start_date,
+            Detection.timestamp <= end_date,
+            Detection.is_smoking == True  # 只統計吸菸偵測
+        ).group_by(
+            cast(Detection.timestamp, Date)
+        ).all()
+        
+        smoking_count_map = {
+            count.date.strftime('%Y-%m-%d'): count.count 
+            for count in smoking_counts
+        }
+        
+        smoking_data = []
+        current = start_date.date()
+        while current <= end:
+            date_str = current.strftime('%Y-%m-%d')
+            smoking_data.append(smoking_count_map.get(date_str, 0))
+            current += timedelta(days=1)
+        
+        return {
+            "success": True,
+            "dates": dates,
+            "counts": counts,
+            "smoking_counts": smoking_data,  # 吸菸偵測數據
+            "days": days
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+# 選擇性：新增每小時趨勢 API（顯示今天的24小時趨勢）
+@app.get("/api/detections/hourly-trend")
+async def get_hourly_trend(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """取得今日每小時的偵測趨勢"""
+    try:
+        from sqlalchemy import func, extract
+        
+        today = datetime.now().date()
+        tomorrow = today + timedelta(days=1)
+        
+        hourly_counts = db.query(
+            extract('hour', Detection.timestamp).label('hour'),
+            func.count(Detection.id).label('count')
+        ).filter(
+            Detection.user_id == current_user.id,
+            Detection.timestamp >= today,
+            Detection.timestamp < tomorrow
+        ).group_by(
+            extract('hour', Detection.timestamp)
+        ).all()
+        
+        # 建立小時映射
+        hour_count_map = {int(count.hour): count.count for count in hourly_counts}
+        
+        # 生成24小時數據
+        hours = list(range(24))
+        counts = [hour_count_map.get(hour, 0) for hour in hours]
+        labels = [f"{hour:02d}:00" for hour in hours]
+        
+        return {
+            "success": True,
+            "labels": labels,
+            "counts": counts
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
 # ==================== WebSocket 即時串流 (客戶端上傳) ====================
 
 @app.websocket("/ws/upload/{api_key}")
@@ -373,7 +529,7 @@ async def websocket_upload(websocket: WebSocket, api_key: str, db: Session = Dep
     print(f"📷 攝影機 [{camera.camera_name}] 已連線")
     
     try:
-        while True:
+        while True: #每次 WebSocket 收到一幀就處理一次
             # 接收 base64 編碼的影像
             data = await websocket.receive_json()
             
@@ -388,17 +544,38 @@ async def websocket_upload(websocket: WebSocket, api_key: str, db: Session = Dep
                 # 執行偵測
                 detection_data, annotated_frame = detect_smoking(frame, camera)
                 
-                # 如果偵測到吸菸
+                # 檢查是否偵測到吸菸
                 if detection_data and detection_data["is_smoking"]:
-                    print(f"⚠️ [{camera.camera_name}] 偵測到吸菸行為！")
-                    
-                    # 儲存截圖
-                    if camera.enable_screenshot:
-                        screenshot_path = save_screenshot(annotated_frame, camera, db)
-                        detection_data["screenshot_path"] = screenshot_path
-                    
-                    # 儲存偵測記錄
-                    save_detection(detection_data, camera, db)
+                    cam_id = camera.id
+                    now = datetime.now()
+
+                    # 初始化該攝影機的計數器
+                    if cam_id not in smoking_frame_counter:
+                        smoking_frame_counter[cam_id] = 0
+                    smoking_frame_counter[cam_id] += 1
+
+                    # 若連續3幀偵測到吸菸才視為有效
+                    if smoking_frame_counter[cam_id] >= DETECTION_STABLE_FRAMES:
+                        # 冷卻時間檢查
+                        last_time = last_detection_time.get(cam_id)
+                        if not last_time or (now - last_time > DETECTION_COOLDOWN):
+                            print(f"⚠️ [{camera.camera_name}] 偵測到穩定吸菸行為！")
+
+                            if camera.enable_screenshot:
+                                screenshot_path = save_screenshot(annotated_frame, camera, db)
+                                detection_data["screenshot_path"] = screenshot_path
+
+                            save_detection(detection_data, camera, db)
+                            last_detection_time[cam_id] = now
+
+                            await websocket.send_json({
+                                "type": "alert",
+                                "data": detection_data
+                            })
+                else:
+                    # 若中斷吸菸，重設計數器
+                    smoking_frame_counter[camera.id] = 0
+
                     
                     # 回傳警報
                     await websocket.send_json({
@@ -437,7 +614,7 @@ def detect_smoking(frame, camera: Camera):
             "max_confidence": 0
         }, frame
     
-    # 執行推論
+    # 執行推論 參數從資料庫讀取
     results = model.predict(
         frame,
         conf=camera.confidence_threshold,
@@ -480,7 +657,8 @@ def detect_smoking(frame, camera: Camera):
         })
     
     detection_data["max_confidence"] = max_confidence
-    
+
+
     return detection_data, annotated_frame
 
 
@@ -492,7 +670,8 @@ def save_screenshot(frame, camera: Camera, db: Session):
     
     cv2.imwrite(str(filepath), frame)
     
-    return str(filepath)
+    # return str(filepath)
+    return filename
 
 
 def save_detection(detection_data, camera: Camera, db: Session):

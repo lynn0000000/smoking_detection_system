@@ -45,9 +45,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 全域變數
+# ==================== 全域變數 ====================
 model = None
-active_websockets = {}  # {camera_id: [websocket1, websocket2, ...]}
+active_websockets = {} # {camera_id: [websocket1, websocket2, ...]}
+last_detection_time = {}
+DETECTION_COOLDOWN = timedelta(seconds=10)
+DETECTION_STABLE_FRAMES = 3
+smoking_frame_counter = {}
+
+# 🔥 新增：為每個攝影機維護追蹤狀態
+camera_trackers = {}  # {camera_id: tracker_state}
 # 全域變數
 last_detection_time = {}  # {camera_id: datetime}
 DETECTION_COOLDOWN = timedelta(seconds=10)  # 同一攝影機10秒內只記一次
@@ -99,7 +106,10 @@ def init_model():
     global model
     try:
         model = YOLO(MODEL_PATH)
-        
+         # 🔥 印出模型的類別定義
+        # print("\n🔍 模型類別定義:")
+        # for idx, name in model.names.items():
+        #     print(f"  類別 {idx}: {name}")
         if torch.cuda.is_available():
             print(f"✅ 使用 GPU: {torch.cuda.get_device_name(0)}")
             model.to('cuda')
@@ -111,11 +121,6 @@ def init_model():
         print(f"❌ 模型載入失敗: {e}")
 
 
-# def init_model():
-#     """初始化 YOLO 模型"""
-#     global model
-#     print("⚠️ AI 模型暫時停用")
-#     model = None
 
 @app.on_event("startup")
 async def startup_event():
@@ -533,6 +538,10 @@ async def websocket_upload(websocket: WebSocket, api_key: str, db: Session = Dep
     
     print(f"📷 攝影機 [{camera.camera_name}] 已連線")
     
+    # 🔥 重置追蹤狀態（當攝影機重新連線時）
+    # YOLO 的追蹤器會自動管理，但可以在這裡初始化計數器
+    smoking_frame_counter[camera.id] = 0
+    
     try:
         while True:
             # 接收 base64 編碼的影像
@@ -546,7 +555,7 @@ async def websocket_upload(websocket: WebSocket, api_key: str, db: Session = Dep
                 np_arr = np.frombuffer(img_data, np.uint8)
                 frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
                 
-                # 執行偵測
+                # 🔥 執行偵測（自動追蹤）
                 detection_data, annotated_frame = detect_smoking(frame, camera)
                 
                 # 檢查是否偵測到吸菸
@@ -559,12 +568,17 @@ async def websocket_upload(websocket: WebSocket, api_key: str, db: Session = Dep
                         smoking_frame_counter[cam_id] = 0
                     smoking_frame_counter[cam_id] += 1
 
-                    # 若連續3幀偵測到吸菸才視為有效
+                    # 若連續3幀偵測到吸菸才算真正吸菸
                     if smoking_frame_counter[cam_id] >= DETECTION_STABLE_FRAMES:
                         # 冷卻時間檢查
                         last_time = last_detection_time.get(cam_id)
                         if not last_time or (now - last_time > DETECTION_COOLDOWN):
                             print(f"⚠️ [{camera.camera_name}] 偵測到穩定吸菸行為！")
+                            
+                            # 🔥 加入追蹤資訊到記錄
+                            smoking_info = detection_data.get("smoking_pairs", [])
+                            if smoking_info:
+                                print(f"   吸菸者 ID: {[p['person_id'] for p in smoking_info]}")
 
                             if camera.enable_screenshot:
                                 screenshot_path = save_screenshot(annotated_frame, camera, db)
@@ -577,18 +591,14 @@ async def websocket_upload(websocket: WebSocket, api_key: str, db: Session = Dep
                                 "type": "alert",
                                 "data": detection_data
                             })
+                            
+                            # 🔥 重置計數器（避免連續觸發）
+                            smoking_frame_counter[cam_id] = 0
                 else:
                     # 若中斷吸菸，重設計數器
                     smoking_frame_counter[camera.id] = 0
-
-                    
-                    # 回傳警報
-                    await websocket.send_json({
-                        "type": "alert",
-                        "data": detection_data
-                    })
                 
-                # 回傳偵測結果(不含影像)
+                # 回傳偵測結果
                 await websocket.send_json({
                     "type": "detection_result",
                     "data": detection_data
@@ -601,16 +611,19 @@ async def websocket_upload(websocket: WebSocket, api_key: str, db: Session = Dep
     except WebSocketDisconnect:
         camera.is_online = False
         db.commit()
+        
+        # 🔥 清理追蹤狀態
+        if camera.id in smoking_frame_counter:
+            del smoking_frame_counter[camera.id]
+        
         print(f"📷 攝影機 [{camera.camera_name}] 已斷線")
 
 
 # ==================== 偵測邏輯 ====================
 
 def detect_smoking(frame, camera: Camera):
-
-    """執行吸菸偵測"""
+    """執行吸菸偵測（使用追蹤）"""
     if model is None:
-        # 返回空的偵測結果
         return {
             "has_person": False,
             "has_cigarette": False,
@@ -619,53 +632,83 @@ def detect_smoking(frame, camera: Camera):
             "max_confidence": 0
         }, frame
     
-    # 執行推論
-    results = model.predict(
+    results = model.track(
         frame,
         conf=camera.confidence_threshold,
         iou=camera.iou_threshold,
-        verbose=False
+        persist=True,
+        verbose=False,
+        tracker="botsort.yaml"
     )
     
     result = results[0]
     boxes = result.boxes
-
-    # 檢查是否同時有人和香菸
-    has_person = any(int(box.cls[0]) == 0 for box in boxes)
-    has_cigarette = any(int(box.cls[0]) == 1 for box in boxes)
+    
+    persons = []
+    cigarettes = []
+    
+    # 🔥 動態取得類別名稱（不寫死）
+    for box in boxes:
+        cls = int(box.cls[0])
+        track_id = int(box.id[0]) if box.id is not None else -1
+        x1, y1, x2, y2 = box.xyxy[0].tolist()
+        conf = float(box.conf[0])
+        
+        # 🔥 從模型取得類別名稱
+        class_name = result.names[cls]
+        
+        obj = {
+            "id": track_id,
+            "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+            "confidence": conf,
+            "class": cls,
+            "label": class_name
+        }
+        
+        # 🔥 根據類別名稱判斷（不是根據數字）
+        if class_name.lower() == "person":
+            persons.append(obj)
+        elif class_name.lower() == "cigarette":
+            cigarettes.append(obj)
+    
+    # 判斷吸菸
+    is_smoking = False
+    smoking_pairs = []
+    max_confidence = 0
+    
+    for person in persons:
+        for cigarette in cigarettes:
+            cig_center_x = (cigarette["x1"] + cigarette["x2"]) / 2
+            cig_center_y = (cigarette["y1"] + cigarette["y2"]) / 2
+            
+            p_x1, p_y1, p_x2, p_y2 = person["x1"], person["y1"], person["x2"], person["y2"]
+            
+            margin = 50
+            if (p_x1 - margin <= cig_center_x <= p_x2 + margin and 
+                p_y1 - margin <= cig_center_y <= p_y2 + margin):
+                is_smoking = True
+                smoking_pairs.append({
+                    "person_id": person["id"],
+                    "cigarette_id": cigarette["id"]
+                })
+                
+                max_conf = max(person["confidence"], cigarette["confidence"])
+                if max_conf > max_confidence:
+                    max_confidence = max_conf
     
     detection_data = {
-        "has_person": has_person,
-        "has_cigarette": has_cigarette,
-        "is_smoking": has_person and has_cigarette,
-        "boxes": []
+        "has_person": len(persons) > 0,
+        "has_cigarette": len(cigarettes) > 0,
+        "is_smoking": is_smoking,
+        "smoking_pairs": smoking_pairs,
+        "max_confidence": max_confidence,
+        "boxes": persons + cigarettes
     }
     
     # 繪製偵測框
     annotated_frame = result.plot()
     
-    # 收集框的資訊
-    max_confidence = 0
-    for box in boxes:
-        x1, y1, x2, y2 = box.xyxy[0].tolist()
-        conf = float(box.conf[0])
-        cls = int(box.cls[0])
-        
-        if conf > max_confidence:
-            max_confidence = conf
-        
-        detection_data["boxes"].append({
-            "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-            "confidence": conf,
-            "class": cls,
-            "label": "cigarette" if cls == 0 else "person"
-        })
-    
-    detection_data["max_confidence"] = max_confidence
-
-
     return detection_data, annotated_frame
-
 
 def save_screenshot(frame, camera: Camera, db: Session):
     """儲存截圖"""
