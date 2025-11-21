@@ -58,7 +58,7 @@
         </div>
     </div>
     
-    <!-- 新增攝影機 Modal -->
+    <!-- 新增攝影機 Modal
     <div class="modal fade" id="addCameraModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -100,8 +100,88 @@
                 </div>
             </div>
         </div>
-    </div>
+    </div> -->
     
+    <!-- 新增攝影機 Modal -->
+<div class="modal fade" id="addCameraModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> 新增攝影機</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addCameraForm">
+                    <div class="mb-3">
+                        <label class="form-label">攝影機名稱</label>
+                        <input type="text" class="form-control" id="cameraName" required placeholder="例如: 辦公室門口攝影機">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">攝影機類型</label>
+                        <select class="form-select" id="cameraType" required onchange="handleCameraTypeChange()">
+                            <option value="">-- 請選擇 --</option>
+                            <option value="local">本地攝影機（瀏覽器）</option>
+                            <option value="usb">USB 攝影機</option>
+                            <option value="rtsp">RTSP 串流</option>
+                        </select>
+                    </div>
+                    
+                    <!-- 🔥 本地/USB 攝影機選擇區 -->
+                    <div id="localCameraSection" style="display: none;">
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> 
+                            <strong>偵測到的攝影機裝置：</strong>
+                            <button type="button" class="btn btn-sm btn-outline-primary ms-2" onclick="scanLocalDevices()">
+                                <i class="bi bi-arrow-clockwise"></i> 重新掃描
+                            </button>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">選擇裝置</label>
+                            <select class="form-select" id="localDeviceSelect" onchange="updateCameraSource()">
+                                <option value="">-- 請先掃描裝置 --</option>
+                            </select>
+                            <small class="text-muted">系統將使用此裝置的 Device ID</small>
+                        </div>
+                        
+                        <!-- 🔥 顯示裝置資訊 -->
+                        <div id="deviceInfo" class="card bg-light" style="display: none;">
+                            <div class="card-body">
+                                <h6 class="card-title">裝置資訊</h6>
+                                <p class="mb-1"><strong>名稱：</strong><span id="deviceLabel">-</span></p>
+                                <p class="mb-1"><strong>Device ID：</strong><code id="deviceId" style="font-size: 0.85em;">-</code></p>
+                                <p class="mb-0"><strong>類型：</strong><span id="deviceKind">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 🔥 RTSP 串流輸入區 -->
+                    <div id="rtspSection" style="display: none;">
+                        <div class="mb-3">
+                            <label class="form-label">RTSP 串流網址</label>
+                            <input type="text" class="form-control" id="rtspUrl" placeholder="rtsp://username:password@ip:port/stream">
+                            <small class="text-muted">格式: rtsp://帳號:密碼@IP:埠號/串流路徑</small>
+                        </div>
+                    </div>
+                    
+                    <!-- 隱藏欄位：實際儲存的 source -->
+                    <input type="hidden" id="cameraSource">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">位置（選填）</label>
+                        <input type="text" class="form-control" id="cameraLocation" placeholder="例如: 辦公室一樓">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="addCamera()">新增</button>
+            </div>
+        </div>
+    </div>
+</div>
+
     <!-- API Key Modal -->
     <div class="modal fade" id="apiKeyModal" tabindex="-1">
         <div class="modal-dialog">
@@ -298,6 +378,249 @@
             mainContent.classList.toggle('collapsed');
             toggleBtn.classList.toggle('collapsed');
         }
+
+        // 🔥 全域變數：儲存掃描到的裝置
+let detectedDevices = [];
+
+// 🔥 處理攝影機類型變更
+function handleCameraTypeChange() {
+    const type = document.getElementById('cameraType').value;
+    const localSection = document.getElementById('localCameraSection');
+    const rtspSection = document.getElementById('rtspSection');
+    
+    // 隱藏所有區塊
+    localSection.style.display = 'none';
+    rtspSection.style.display = 'none';
+    
+    // 根據類型顯示對應區塊
+    if (type === 'local' || type === 'usb') {
+        localSection.style.display = 'block';
+        // 自動掃描裝置
+        scanLocalDevices();
+    } else if (type === 'rtsp') {
+        rtspSection.style.display = 'block';
+    }
+}
+
+// 🔥 掃描本地攝影機裝置
+async function scanLocalDevices() {
+    const selectElement = document.getElementById('localDeviceSelect');
+    const deviceInfo = document.getElementById('deviceInfo');
+    
+    try {
+        // 先請求權限
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        // 立即停止，我們只是要取得權限
+        stream.getTracks().forEach(track => track.stop());
+        
+        // 列舉裝置
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        detectedDevices = devices.filter(device => device.kind === 'videoinput');
+        
+        console.log('🎥 掃描到的攝影機:', detectedDevices);
+        
+        if (detectedDevices.length === 0) {
+            selectElement.innerHTML = '<option value="">❌ 沒有偵測到攝影機</option>';
+            alert('沒有偵測到攝影機裝置，請確認：\n1. 攝影機已連接\n2. 瀏覽器權限已開啟');
+            return;
+        }
+        
+        // 填充下拉選單
+        selectElement.innerHTML = '<option value="">-- 請選擇裝置 --</option>' + 
+            detectedDevices.map((device, index) => {
+                const label = device.label || `攝影機 ${index + 1}`;
+                return `<option value="${index}">${label}</option>`;
+            }).join('');
+        
+        // 顯示成功訊息
+        showToast(`成功偵測到 ${detectedDevices.length} 個攝影機裝置`, 'success');
+        
+        // 隱藏裝置資訊
+        deviceInfo.style.display = 'none';
+        
+    } catch (error) {
+        console.error('❌ 掃描裝置失敗:', error);
+        
+        let errorMsg = '掃描攝影機失敗\n\n';
+        if (error.name === 'NotAllowedError') {
+            errorMsg += '原因：瀏覽器權限被拒絕\n請在瀏覽器設定中允許攝影機權限';
+        } else if (error.name === 'NotFoundError') {
+            errorMsg += '原因：找不到攝影機裝置';
+        } else {
+            errorMsg += '錯誤：' + error.message;
+        }
+        
+        alert(errorMsg);
+        selectElement.innerHTML = '<option value="">❌ 掃描失敗</option>';
+    }
+}
+
+// 在 updateCameraSource 函數中
+function updateCameraSource() {
+    const selectElement = document.getElementById('localDeviceSelect');
+    const selectedIndex = parseInt(selectElement.value);
+    const deviceInfo = document.getElementById('deviceInfo');
+    const cameraSourceInput = document.getElementById('cameraSource');
+    
+    if (isNaN(selectedIndex) || selectedIndex < 0) {
+        deviceInfo.style.display = 'none';
+        cameraSourceInput.value = '';
+        return;
+    }
+    
+    const device = detectedDevices[selectedIndex];
+    
+    if (!device) {
+        console.error('找不到裝置');
+        return;
+    }
+    
+    // 🔥 改成儲存 JSON 格式，包含 deviceId 和 label
+    const cameraInfo = {
+        deviceId: device.deviceId,
+        label: device.label || `Camera ${selectedIndex}`,
+        index: selectedIndex
+    };
+    
+    cameraSourceInput.value = JSON.stringify(cameraInfo);
+    
+    // 顯示裝置資訊
+    document.getElementById('deviceLabel').textContent = device.label || '未知裝置';
+    document.getElementById('deviceId').textContent = device.deviceId;
+    document.getElementById('deviceKind').textContent = device.kind === 'videoinput' ? '視訊輸入' : device.kind;
+    
+    deviceInfo.style.display = 'block';
+    
+    console.log('✅ 已選擇裝置:', cameraInfo);
+}
+
+// 🔥 修改新增攝影機函數
+async function addCamera() {
+    const name = document.getElementById('cameraName').value.trim();
+    const type = document.getElementById('cameraType').value;
+    const location = document.getElementById('cameraLocation').value.trim();
+    
+    // 驗證必填欄位
+    if (!name) {
+        alert('請輸入攝影機名稱');
+        return;
+    }
+    
+    if (!type) {
+        alert('請選擇攝影機類型');
+        return;
+    }
+    
+    // 🔥 取得來源
+    let source;
+    if (type === 'local' || type === 'usb') {
+        source = document.getElementById('cameraSource').value;
+        if (!source) {
+            alert('請選擇攝影機裝置');
+            return;
+        }
+    } else if (type === 'rtsp') {
+        source = document.getElementById('rtspUrl').value.trim();
+        if (!source) {
+            alert('請輸入 RTSP 串流網址');
+            return;
+        }
+        // 驗證 RTSP 格式
+        if (!source.startsWith('rtsp://')) {
+            alert('RTSP 網址格式錯誤，應以 rtsp:// 開頭');
+            return;
+        }
+    }
+    
+    try {
+        const response = await fetch(`${API_URL}/api/cameras`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                camera_name: name,
+                camera_type: type,
+                camera_source: source,
+                location: location
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            // 關閉新增視窗
+            bootstrap.Modal.getInstance(document.getElementById('addCameraModal')).hide();
+            
+            // 顯示 API Key
+            document.getElementById('apiKeyDisplay').value = data.api_key;
+            document.getElementById('clientCommand').textContent = 
+                `python client/camera_client.py --server ws://localhost:8000 --api-key ${data.api_key} --type ${type} --source ${source}`;
+            
+            new bootstrap.Modal(document.getElementById('apiKeyModal')).show();
+            
+            // 重新載入列表
+            loadCameras();
+            
+            // 清空表單
+            document.getElementById('addCameraForm').reset();
+            document.getElementById('localCameraSection').style.display = 'none';
+            document.getElementById('rtspSection').style.display = 'none';
+            document.getElementById('deviceInfo').style.display = 'none';
+            
+            showToast('攝影機新增成功！', 'success');
+        } else {
+            alert('新增失敗: ' + (data.detail || '未知錯誤'));
+        }
+    } catch (error) {
+        alert('連線失敗: ' + error.message);
+        console.error('Error:', error);
+    }
+}
+
+    // 🔥 Toast 通知函數
+    function showToast(message, type = 'info') {
+        const toastContainer = document.getElementById('toastContainer') || createToastContainer();
+        
+        const toast = document.createElement('div');
+        toast.className = `toast align-items-center text-white bg-${type} border-0`;
+        toast.setAttribute('role', 'alert');
+        toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">
+                    ${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        `;
+        
+        toastContainer.appendChild(toast);
+        const bsToast = new bootstrap.Toast(toast);
+        bsToast.show();
+        
+        // 自動移除
+        toast.addEventListener('hidden.bs.toast', () => {
+            toast.remove();
+        });
+    }
+
+    function createToastContainer() {
+        const container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.className = 'toast-container position-fixed top-0 end-0 p-3';
+        container.style.zIndex = '9999';
+        document.body.appendChild(container);
+        return container;
+    }
+
+    // 🔥 Modal 打開時自動掃描（可選）
+    document.getElementById('addCameraModal').addEventListener('shown.bs.modal', function () {
+        const typeSelect = document.getElementById('cameraType');
+        if (typeSelect.value === 'local' || typeSelect.value === 'usb') {
+            scanLocalDevices();
+        }
+    });
         // 初始載入
         loadCameras();
     </script>
