@@ -181,7 +181,87 @@
         </div>
     </div>
 </div>
-
+<!-- 編輯攝影機 Modal -->
+<div class="modal fade" id="editCameraModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> 編輯攝影機</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editCameraForm">
+                    <input type="hidden" id="editCameraId">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">攝影機名稱</label>
+                        <input type="text" class="form-control" id="editCameraName" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">攝影機類型</label>
+                        <select class="form-select" id="editCameraType" disabled>
+                            <option value="local">本地攝影機</option>
+                            <option value="usb">USB 攝影機</option>
+                            <option value="rtsp">RTSP 串流</option>
+                        </select>
+                        <small class="text-muted">類型不可修改</small>
+                    </div>
+                    
+                    <!-- 🔥 本地/USB 攝影機編輯區 -->
+                    <div id="editLocalCameraSection" style="display: none;">
+                        <div class="alert alert-info">
+                            <strong>目前裝置：</strong><span id="currentSource" class="ms-2">-</span>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">重新選擇裝置（選填）</label>
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="scanDevicesForEdit()">
+                                <i class="bi bi-arrow-clockwise"></i> 掃描並選擇新裝置
+                            </button>
+                        </div>
+                        
+                        <div id="editDeviceSelectArea" style="display: none;">
+                            <select class="form-select mb-2" id="editLocalDeviceSelect">
+                                <option value="">-- 請選擇 --</option>
+                            </select>
+                            <button type="button" class="btn btn-sm btn-success" onclick="confirmEditDevice()">
+                                <i class="bi bi-check"></i> 確認選擇
+                            </button>
+                        </div>
+                        
+                        <div id="editDeviceInfo" class="card bg-light mt-2" style="display: none;">
+                            <div class="card-body">
+                                <h6 class="card-title">新裝置資訊</h6>
+                                <p class="mb-1"><strong>名稱：</strong><span id="editDeviceLabel">-</span></p>
+                                <p class="mb-0"><strong>Device ID：</strong><code id="editDeviceId" style="font-size: 0.85em;">-</code></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 🔥 RTSP 編輯區 -->
+                    <div id="editRtspSection" style="display: none;">
+                        <div class="mb-3">
+                            <label class="form-label">RTSP 串流網址</label>
+                            <input type="text" class="form-control" id="editRtspUrl">
+                        </div>
+                    </div>
+                    
+                    <input type="hidden" id="editCameraSource">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">位置</label>
+                        <input type="text" class="form-control" id="editCameraLocation">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="updateCamera()">儲存變更</button>
+            </div>
+        </div>
+    </div>
+</div>
     <!-- API Key Modal -->
     <div class="modal fade" id="apiKeyModal" tabindex="-1">
         <div class="modal-dialog">
@@ -359,9 +439,47 @@
             }
         }
         
-        function editCamera(id) {
-            alert('編輯功能開發中...');
+       async function editCamera(id) {
+    try {
+        // 1. 取得攝影機資料
+        const response = await fetch(`${API_URL}/api/cameras/${id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        const camera = await response.json();
+        
+        // 2. 填入編輯表單
+        document.getElementById('editCameraId').value = camera.id;
+        document.getElementById('editCameraName').value = camera.camera_name;
+        document.getElementById('editCameraType').value = camera.camera_type;
+        document.getElementById('editCameraLocation').value = camera.location || '';
+        
+        // 3. 如果是 local/usb，顯示重新掃描區
+        if (camera.camera_type === 'local' || camera.camera_type === 'usb') {
+            document.getElementById('editLocalCameraSection').style.display = 'block';
+            document.getElementById('editRtspSection').style.display = 'none';
+            
+            // 顯示目前的來源
+            try {
+                const sourceInfo = JSON.parse(camera.camera_source);
+                document.getElementById('currentSource').textContent = sourceInfo.label;
+            } catch (e) {
+                document.getElementById('currentSource').textContent = '舊格式 (需要重新掃描)';
+            }
+        } else if (camera.camera_type === 'rtsp') {
+            document.getElementById('editLocalCameraSection').style.display = 'none';
+            document.getElementById('editRtspSection').style.display = 'block';
+            document.getElementById('editRtspUrl').value = camera.camera_source;
         }
+        
+        // 4. 開啟編輯 Modal
+        new bootstrap.Modal(document.getElementById('editCameraModal')).show();
+        
+    } catch (error) {
+        console.error('載入攝影機資料失敗:', error);
+        alert('載入失敗');
+    }
+}
         
         function logout() {
             localStorage.clear();
@@ -621,6 +739,120 @@ async function addCamera() {
             scanLocalDevices();
         }
     });
+
+
+    let editDetectedDevices = [];
+
+// 🔥 為編輯模式掃描裝置
+async function scanDevicesForEdit() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream.getTracks().forEach(track => track.stop());
+        
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        editDetectedDevices = devices.filter(device => device.kind === 'videoinput');
+        
+        if (editDetectedDevices.length === 0) {
+            alert('沒有偵測到攝影機');
+            return;
+        }
+        
+        const selectElement = document.getElementById('editLocalDeviceSelect');
+        selectElement.innerHTML = '<option value="">-- 請選擇 --</option>' + 
+            editDetectedDevices.map((device, index) => {
+                const label = device.label || `攝影機 ${index + 1}`;
+                return `<option value="${index}">${label}</option>`;
+            }).join('');
+        
+        document.getElementById('editDeviceSelectArea').style.display = 'block';
+        showToast(`偵測到 ${editDetectedDevices.length} 個攝影機`, 'success');
+        
+    } catch (error) {
+        alert('掃描失敗：' + error.message);
+    }
+}
+
+// 🔥 確認選擇編輯裝置
+function confirmEditDevice() {
+    const selectElement = document.getElementById('editLocalDeviceSelect');
+    const selectedIndex = parseInt(selectElement.value);
+    
+    if (isNaN(selectedIndex)) {
+        alert('請選擇裝置');
+        return;
+    }
+    
+    const device = editDetectedDevices[selectedIndex];
+    
+    const cameraInfo = {
+        deviceId: device.deviceId,
+        label: device.label || `攝影機 ${selectedIndex + 1}`,
+        index: selectedIndex
+    };
+    
+    document.getElementById('editCameraSource').value = JSON.stringify(cameraInfo);
+    
+    document.getElementById('editDeviceLabel').textContent = cameraInfo.label;
+    document.getElementById('editDeviceId').textContent = device.deviceId;
+    document.getElementById('editDeviceInfo').style.display = 'block';
+    
+    showToast('裝置已選擇', 'success');
+}
+
+async function updateCamera() {
+    const id = document.getElementById('editCameraId').value;
+    const name = document.getElementById('editCameraName').value;
+    const type = document.getElementById('editCameraType').value;
+    const location = document.getElementById('editCameraLocation').value;
+    
+    let source = document.getElementById('editCameraSource').value;
+    
+    if (type === 'rtsp') {
+        source = document.getElementById('editRtspUrl').value;
+    }
+    
+    const updateData = {
+        camera_name: name,
+        location: location
+    };
+    
+    if (source) {
+        updateData.camera_source = source;
+    }
+    
+    // 🔥 加這行，檢查要送出的資料
+    console.log('📤 更新資料:', updateData);
+    
+    try {
+        const response = await fetch(`${API_URL}/api/cameras/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(updateData)
+        });
+        
+        // 🔥 加這行，檢查回應
+        const result = await response.json();
+        console.log('📥 伺服器回應:', result);
+        
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('editCameraModal')).hide();
+            showToast('更新成功！', 'success');
+            loadCameras();
+            
+            document.getElementById('editCameraForm').reset();
+            document.getElementById('editDeviceSelectArea').style.display = 'none';
+            document.getElementById('editDeviceInfo').style.display = 'none';
+        } else {
+            alert('更新失敗: ' + (result.detail || '未知錯誤'));
+        }
+    } catch (error) {
+        console.error('❌ 更新錯誤:', error);
+        alert('更新失敗：' + error.message);
+    }
+}
         // 初始載入
         loadCameras();
     </script>

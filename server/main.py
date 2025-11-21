@@ -78,6 +78,7 @@ class CameraCreate(BaseModel):
 class CameraUpdate(BaseModel):
     camera_name: Optional[str] = None
     location: Optional[str] = None
+    camera_source: Optional[str] = None 
     confidence_threshold: Optional[float] = None
     iou_threshold: Optional[float] = None
     enable_alert: Optional[bool] = None
