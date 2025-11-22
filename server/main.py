@@ -79,8 +79,14 @@ class CameraUpdate(BaseModel):
     camera_name: Optional[str] = None
     location: Optional[str] = None
     camera_source: Optional[str] = None 
-    confidence_threshold: Optional[float] = None
-    iou_threshold: Optional[float] = None
+
+    # YOLO 偵測參數
+    confidence_threshold: Optional[float] = None    # 信心值
+    iou_threshold: Optional[float] = None           # NMS IOU 門檻
+    draw_bbox: Optional[bool] = None                # 是否顯示框框
+    detect_mode: Optional[str] = None               # real_time / low_power
+
+    # 你的原有功能
     enable_alert: Optional[bool] = None
     enable_screenshot: Optional[bool] = None
 
@@ -265,6 +271,10 @@ async def update_camera(
     update_data = camera_update.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(camera, key, value)
+
+    # update_data = camera_update.dict(exclude_unset=True)
+    # for key, value in update_data.items():
+    #     setattr(camera, key, value)
     
     db.commit()
     db.refresh(camera)
