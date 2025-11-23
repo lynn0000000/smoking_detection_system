@@ -1,136 +1,357 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YOLO 偵測設定</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    label { display: block; margin-top: 10px; }
-    input, select { padding: 5px; margin-top: 5px; width: 200px; }
-    button { margin-top: 20px; padding: 10px 20px; }
-    #message { margin-top: 15px; font-weight: bold; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>吸菸監控系統 - YOLO 偵測設定</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="./css/dashboard.css">
 </head>
 <body>
-  <h2>YOLO 偵測參數設定</h2>
+    <!-- 收縮側邊欄按鈕 -->
+    <div class="toggle-btn" onclick="toggleSidebar()">
+        <i class="bi bi-list"></i>
+    </div>
+    
+    <!-- 側邊欄 -->
+    <div class="sidebar">
+        <div class="logo">
+            <i class="bi bi-camera-video-off"></i>
+            <h5 class="mt-2">吸菸監控系統</h5>
+        </div>
+        
+        <nav class="nav flex-column">
+            <a class="nav-link" href="dashboard.html">
+                <i class="bi bi-speedometer2"></i> 儀表板
+            </a>
+            <a class="nav-link" href="cameras.html">
+                <i class="bi bi-camera"></i> 攝影機管理
+            </a>
+            <a class="nav-link" href="monitor.html">
+                <i class="bi bi-display"></i> 即時監控
+            </a>
+            <a class="nav-link" href="detections.html">
+                <i class="bi bi-list-ul"></i> 偵測記錄
+            </a>
+            <a class="nav-link active" href="settings.html">
+                <i class="bi bi-gear"></i> 系統設定
+            </a>
+            <a class="nav-link" href="#" onclick="logout()">
+                <i class="bi bi-box-arrow-right"></i> 登出
+            </a>
+        </nav>
+    </div>
+    
+    <!-- 主要內容 -->
+    <div class="main-content">
+        <!-- 頂部資訊 -->
+        <div class="header">
+            <div>
+                <h3><i class="bi bi-gear"></i> YOLO 偵測參數設定</h3>
+                <small class="text-muted">調整攝影機偵測參數以優化識別效果</small>
+            </div>
+            <div>
+                <button class="btn btn-outline-primary" onclick="loadCameras()">
+                    <i class="bi bi-arrow-clockwise"></i> 重新整理
+                </button>
+            </div>
+        </div>
+        
+        <!-- 統計卡片 -->
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="stat-card primary">
+                    <i class="bi bi-camera icon text-primary"></i>
+                    <h2 id="totalCameras">0</h2>
+                    <p class="text-muted mb-0">總攝影機數</p>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="stat-card success">
+                    <i class="bi bi-check-circle icon text-success"></i>
+                    <h2 id="configuredCameras">0</h2>
+                    <p class="text-muted mb-0">已設定攝影機</p>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="stat-card warning">
+                    <i class="bi bi-sliders icon text-warning"></i>
+                    <h2>YOLO</h2>
+                    <p class="text-muted mb-0">偵測引擎</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 設定表單 -->
+        <div class="chart-container">
+            <h5><i class="bi bi-sliders"></i> 攝影機偵測參數</h5>
+            
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">
+                        <i class="bi bi-camera-fill text-primary"></i> 選擇攝影機
+                    </label>
+                    <select id="cameraSelect" class="form-select form-select-lg">
+                        <option value="">請選擇攝影機...</option>
+                    </select>
+                </div>
+            </div>
+            
+            <form id="yoloForm">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-bullseye text-info"></i> Confidence Threshold (信心度閾值)
+                                </label>
+                                <input type="number" 
+                                       step="0.01" 
+                                       min="0" 
+                                       max="1" 
+                                       name="confidence_threshold" 
+                                       class="form-control form-control-lg"
+                                       placeholder="0.30">
+                                <small class="text-muted d-block mt-2">
+                                    <i class="bi bi-info-circle"></i> 建議值：0.2 - 0.5，數值越高偵測越嚴格
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-intersect text-success"></i> IOU Threshold (重疊閾值)
+                                </label>
+                                <input type="number" 
+                                       step="0.01" 
+                                       min="0" 
+                                       max="1" 
+                                       name="iou_threshold" 
+                                       class="form-control form-control-lg"
+                                       placeholder="0.50">
+                                <small class="text-muted d-block mt-2">
+                                    <i class="bi bi-info-circle"></i> 建議值：0.4 - 0.6，用於過濾重疊框框
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-12 mt-4">
+                        <div class="w-100">
+                            <button type="submit" class="btn btn-primary btn-lg w-100">
+                                <i class="bi bi-check-circle"></i> 更新設定
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+            
+            <!-- 訊息顯示區域 -->
+            <div id="message" class="mt-4"></div>
+        </div>
+        
+        <!-- 參數說明 -->
+        <div class="chart-container">
+            <h5><i class="bi bi-book"></i> 參數說明</h5>
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="card h-100 border-0" style="background: #f0f7ff;">
+                        <div class="card-body">
+                            <h6 class="text-primary">
+                                <i class="bi bi-bullseye"></i> Confidence Threshold
+                            </h6>
+                            <p class="mb-0 small">
+                                信心度閾值決定了模型認為偵測結果可靠的最低標準。
+                                數值越高，只有更確定的偵測才會被保留，減少誤報但可能漏掉一些真實案例。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card h-100 border-0" style="background: #f0fff4;">
+                        <div class="card-body">
+                            <h6 class="text-success">
+                                <i class="bi bi-intersect"></i> IOU Threshold
+                            </h6>
+                            <p class="mb-0 small">
+                                交併比閾值用於非極大值抑制（NMS），當多個偵測框重疊時，
+                                會保留信心度最高的框，移除重疊度超過此閾值的其他框。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-  <label>
-    選擇攝影機:
-    <select id="cameraSelect"></select>
-  </label>
+    <script>
+        const API_URL = 'http://localhost:8000';
+        const cameraSelect = document.getElementById('cameraSelect');
+        const form = document.getElementById('yoloForm');
+        const message = document.getElementById('message');
 
-  <form id="yoloForm">
-    <label>Confidence threshold: <input type="number" step="0.01" min="0" max="1" name="confidence_threshold"></label>
-    <label>iou threshold: <input type="number" step="0.01" min="0" max="1" name="iou_threshold"></label>
-    <label>顯示框框: 
-      <select name="draw_bbox">
-        <option value="true">是</option>
-        <option value="false">否</option>
-      </select>
-    </label>
-    <button type="submit">更新設定</button>
-  </form>
-  <div id="message"></div>
-
-<script>
-const API_URL = 'http://localhost:8000';
-const cameraSelect = document.getElementById('cameraSelect');
-const form = document.getElementById('yoloForm');
-const message = document.getElementById('message');
-
-// 取得 token
-const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-if (!token) {
-    alert('請先登入');
-    window.location.href = 'login.html';
-}
-
-// 載入攝影機列表
-async function loadCameras() {
-    try {
-        const res = await fetch(`${API_URL}/api/cameras`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('無法載入攝影機列表');
-        const cameras = await res.json();
-        cameraSelect.innerHTML = '<option value="">請選擇攝影機</option>';
-        cameras.forEach(cam => {
-            const option = document.createElement('option');
-            option.value = cam.id;
-            option.textContent = cam.camera_name;
-            cameraSelect.appendChild(option);
-        });
-    } catch (error) {
-        console.error(error);
-        message.style.color = 'red';
-        message.textContent = '載入攝影機列表失敗';
-    }
-}
-
-// 選擇攝影機後載入設定
-cameraSelect.addEventListener('change', async () => {
-    const camId = cameraSelect.value;
-    if (!camId) return;
-
-    try {
-        const res = await fetch(`${API_URL}/api/cameras/${camId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('無法載入攝影機設定');
-        const cam = await res.json();
-
-        form.confidence_threshold.value = cam.confidence_threshold ?? 0.3;
-        form.iou_threshold.value = cam.iou_threshold ?? 0.5;
-        form.draw_bbox.value = cam.draw_bbox ? 'true' : 'false';
-        message.textContent = '';
-    } catch (error) {
-        console.error(error);
-        message.style.color = 'red';
-        message.textContent = '載入攝影機設定失敗';
-    }
-});
-
-// 提交更新
-form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const camId = cameraSelect.value;
-    if (!camId) return alert('請先選擇攝影機');
-
-    const data = {
-        confidence_threshold: parseFloat(form.confidence_threshold.value),
-        iou_threshold: parseFloat(form.iou_threshold.value),
-        draw_bbox: form.draw_bbox.value === 'true'
-    };
-
-    try {
-        const res = await fetch(`${API_URL}/api/cameras/${camId}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(data)
-        });
-
-        if (res.ok) {
-            message.style.color = 'green';
-            message.textContent = '更新成功！';
-        } else {
-            const err = await res.json();
-            message.style.color = 'red';
-            message.textContent = `錯誤: ${err.detail || res.status}`;
+        // 取得 token
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        if (!token) {
+            alert('請先登入');
+            window.location.href = 'login.html';
         }
-    } catch (error) {
-        console.error(error);
-        message.style.color = 'red';
-        message.textContent = '更新失敗，請檢查控制台';
-    }
-});
 
-// 初始載入攝影機
-loadCameras();
-</script>
+        // 顯示訊息
+        function showMessage(text, type = 'success') {
+            const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+            const iconClass = type === 'success' ? 'bi-check-circle' : 'bi-exclamation-triangle';
+            
+            message.innerHTML = `
+                <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+                    <i class="bi ${iconClass}"></i> ${text}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            
+            // 3秒後自動消失
+            setTimeout(() => {
+                message.innerHTML = '';
+            }, 3000);
+        }
 
+        // 載入攝影機列表
+        async function loadCameras() {
+            try {
+                const res = await fetch(`${API_URL}/api/cameras`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!res.ok) throw new Error('無法載入攝影機列表');
+                
+                const cameras = await res.json();
+                
+                // 更新統計卡片
+                document.getElementById('totalCameras').textContent = cameras.length;
+                document.getElementById('configuredCameras').textContent = cameras.filter(c => 
+                    c.confidence_threshold !== null && c.iou_threshold !== null
+                ).length;
+                
+                // 更新下拉選單
+                cameraSelect.innerHTML = '<option value="">請選擇攝影機...</option>';
+                cameras.forEach(cam => {
+                    const option = document.createElement('option');
+                    option.value = cam.id;
+                    option.textContent = `${cam.camera_name} ${cam.location ? '- ' + cam.location : ''}`;
+                    cameraSelect.appendChild(option);
+                });
+                
+            } catch (error) {
+                console.error(error);
+                showMessage('載入攝影機列表失敗', 'error');
+            }
+        }
+
+        // 選擇攝影機後載入設定
+        cameraSelect.addEventListener('change', async () => {
+            const camId = cameraSelect.value;
+            if (!camId) {
+                // 重置表單
+                form.reset();
+                message.innerHTML = '';
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/api/cameras/${camId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!res.ok) throw new Error('無法載入攝影機設定');
+                
+                const cam = await res.json();
+
+                form.confidence_threshold.value = cam.confidence_threshold ?? 0.3;
+                form.iou_threshold.value = cam.iou_threshold ?? 0.5;
+                
+                message.innerHTML = `
+                    <div class="alert alert-info" role="alert">
+                        <i class="bi bi-info-circle"></i> 已載入 <strong>${cam.camera_name}</strong> 的設定
+                    </div>
+                `;
+                
+            } catch (error) {
+                console.error(error);
+                showMessage('載入攝影機設定失敗', 'error');
+            }
+        });
+
+        // 提交更新
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const camId = cameraSelect.value;
+            
+            if (!camId) {
+                showMessage('請先選擇攝影機', 'error');
+                return;
+            }
+
+            const data = {
+                confidence_threshold: parseFloat(form.confidence_threshold.value),
+                iou_threshold: parseFloat(form.iou_threshold.value)
+            };
+
+            try {
+                const res = await fetch(`${API_URL}/api/cameras/${camId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    showMessage('設定更新成功！', 'success');
+                    loadCameras(); // 重新載入統計
+                } else {
+                    const err = await res.json();
+                    showMessage(`更新失敗: ${err.detail || res.status}`, 'error');
+                }
+            } catch (error) {
+                console.error(error);
+                showMessage('更新失敗，請檢查網路連線', 'error');
+            }
+        });
+
+        // 登出功能
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('username');
+            window.location.href = 'login.html';
+        }
+
+        // 動態導覽列
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const mainContent = document.querySelector('.main-content');
+            const toggleBtn = document.querySelector('.toggle-btn');
+
+            sidebar.classList.toggle('collapsed');
+            mainContent.classList.toggle('collapsed');
+            toggleBtn.classList.toggle('collapsed');
+        }
+
+        // 初始載入
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCameras();
+        });
+    </script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
