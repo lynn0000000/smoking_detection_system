@@ -108,25 +108,143 @@ class DetectionResponse(BaseModel):
 
 # ==================== 初始化 ====================
 
+# def init_model():
+#     """初始化 YOLO 模型"""
+#     global model
+#     try:
+#         model = YOLO(MODEL_PATH)
+#          # 🔥 印出模型的類別定義
+#         # print("\n🔍 模型類別定義:")
+#         # for idx, name in model.names.items():
+#         #     print(f"  類別 {idx}: {name}")
+#         if torch.cuda.is_available():
+#             print(f"✅ 使用 GPU: {torch.cuda.get_device_name(0)}")
+#             model.to('cuda')
+#         else:
+#             print("⚠️ GPU 不可用，使用 CPU")
+        
+#         print("✅ 模型載入成功")
+#     except Exception as e:
+#         print(f"❌ 模型載入失敗: {e}")
+
+
 def init_model():
-    """初始化 YOLO 模型"""
+    """初始化 YOLO 模型 - Jetson 優化版"""
     global model
     try:
-        model = YOLO(MODEL_PATH)
-         # 🔥 印出模型的類別定義
-        # print("\n🔍 模型類別定義:")
-        # for idx, name in model.names.items():
-        #     print(f"  類別 {idx}: {name}")
-        if torch.cuda.is_available():
-            print(f"✅ 使用 GPU: {torch.cuda.get_device_name(0)}")
-            model.to('cuda')
-        else:
-            print("⚠️ GPU 不可用，使用 CPU")
+        import platform
         
-        print("✅ 模型載入成功")
+        # 偵測是否在 Jetson 平台
+        is_jetson = 'aarch64' in platform.machine() or 'tegra' in platform.processor().lower()
+        
+        print(f"\n{'='*60}")
+        print(f"🚀 初始化 YOLO 模型")
+        print(f"{'='*60}")
+        
+        if is_jetson:
+            print(f"🤖 偵測到 Jetson 平台")
+        
+        # CUDA 檢查
+        print(f"\n🔍 CUDA 環境檢查:")
+        print(f"   PyTorch 版本: {torch.__version__}")
+        print(f"   CUDA 可用: {torch.cuda.is_available()}")
+        
+        if torch.cuda.is_available():
+            print(f"   CUDA 版本: {torch.version.cuda}")
+            print(f"   GPU 名稱: {torch.cuda.get_device_name(0)}")
+            print(f"   GPU 記憶體: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
+        else:
+            print(f"   ⚠️  警告: CUDA 不可用! 將使用 CPU (會非常慢)")
+            print(f"   💡 請確認:")
+            print(f"      1. 執行 'python3 -c \"import torch; print(torch.cuda.is_available())\"'")
+            print(f"      2. 如果是 Jetson,請安裝 NVIDIA 官方的 PyTorch")
+        
+        # 載入模型
+        print(f"\n📥 載入模型: {MODEL_PATH}")
+        model = YOLO(MODEL_PATH)
+        
+        # ⭐ 強制使用 GPU
+        if torch.cuda.is_available():
+            model.to('cuda')
+            print(f"✅ 模型已載入到 GPU")
+            
+            # ⭐ Jetson 專用優化
+            if is_jetson:
+                print(f"\n⚙️  啟用 Jetson 優化...")
+                
+                # CUDA 優化設定
+                torch.backends.cudnn.benchmark = True  # 自動尋找最佳演算法
+                torch.backends.cuda.matmul.allow_tf32 = True  # 允許 TF32
+                torch.backends.cudnn.allow_tf32 = True
+                
+                # 設定為評估模式
+                model.model.eval()
+                
+                print(f"   ✅ CUDA 優化已啟用")
+                print(f"   ✅ cudnn.benchmark = True")
+                print(f"   ✅ TF32 加速已啟用")
+        else:
+            print(f"⚠️  模型使用 CPU (效能會很差!)")
+        
+        # ⭐ GPU Warm-up (重要!)
+        print(f"\n🔥 GPU Warm-up...")
+        dummy_img = np.zeros((640, 640, 3), dtype=np.uint8)
+        
+        # 執行多次 warm-up
+        for i in range(5):
+            _ = model(dummy_img, verbose=False, imgsz=640)
+        
+        print(f"✅ Warm-up 完成")
+        
+        # ⭐ 效能測試
+        print(f"\n🧪 效能基準測試 (10 次推理)...")
+        import time
+        times = []
+        
+        for i in range(10):
+            start = time.time()
+            _ = model(dummy_img, verbose=False, imgsz=640)
+            elapsed = time.time() - start
+            times.append(elapsed)
+        
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        fps = 1 / avg_time if avg_time > 0 else 0
+        
+        print(f"\n📊 效能測試結果:")
+        print(f"   平均推理時間: {avg_time*1000:.1f} ms")
+        print(f"   最快: {min_time*1000:.1f} ms")
+        print(f"   最慢: {max_time*1000:.1f} ms")
+        print(f"   理論 FPS: {fps:.1f}")
+        
+        # ⭐ 效能評估
+        if is_jetson:
+            print(f"\n🎯 Jetson 效能評估:")
+            if avg_time < 0.04:  # < 40ms
+                print(f"   ✅ 優秀 (GPU 正常運作)")
+            elif avg_time < 0.1:  # < 100ms
+                print(f"   ⚠️  中等 (可能未完全使用 GPU)")
+                print(f"   💡 建議: 執行 'sudo tegrastats' 確認 GPU 使用率")
+            else:  # > 100ms
+                print(f"   ❌ 差 (可能使用 CPU!)")
+                print(f"   🔧 請執行以下診斷:")
+                print(f"      1. sudo nvpmodel -m 0")
+                print(f"      2. sudo jetson_clocks")
+                print(f"      3. sudo tegrastats")
+                print(f"      4. python3 -c 'import torch; print(torch.cuda.is_available())'")
+        
+        print(f"{'='*60}")
+        print(f"✅ 模型初始化完成!\n")
+        
+        # 印出模型類別
+        print(f"🏷️  模型類別: {list(model.names.values())}")
+        
     except Exception as e:
         print(f"❌ 模型載入失敗: {e}")
-
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 @app.on_event("startup")
