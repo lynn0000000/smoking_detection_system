@@ -7,6 +7,9 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="./css/monitor.css">
+    <style>
+        /* 簡單的警示框樣式 */
+    </style>
 </head>
 <body>
     <!--收縮側邊欄按鈕-->
@@ -63,7 +66,7 @@
             <div class="col-lg-8">
                 <div class="card">
                     <div class="card-body p-0">
-                        <div class="video-container">
+                        <div class="video-container" id="videoContainer">
                             <div id="videoPlaceholder" class="video-placeholder">
                                 <i class="bi bi-camera-video-off"></i>
                                 <p>請選擇攝影機開始監控</p>
@@ -71,9 +74,6 @@
                             <canvas id="displayCanvas"></canvas>
                             <div id="statusIndicator" class="status-indicator status-offline">
                                 <i class="bi bi-wifi-off"></i> 離線
-                            </div>
-                            <div id="detectionAlert" class="detection-alert">
-                                <i class="bi bi-exclamation-triangle"></i> 偵測到吸菸行為！
                             </div>
                         </div>
                     </div>
@@ -106,7 +106,7 @@
             
             <!-- 統計資訊 -->
             <div class="col-lg-4">
-                <div class="card mb-3">
+                <div class="card">
                     <div class="card-body">
                         <h5 class="card-title mb-3"><i class="bi bi-graph-up"></i> 即時統計</h5>
                         
@@ -120,21 +120,19 @@
                             <p>偵測次數</p>
                         </div>
                         
-                        <div class="stats-box">
+                        <div class="stats-box mb-3">
                             <h4 id="avgConfidence">0%</h4>
                             <p>平均信心度</p>
                         </div>
-                    </div>
-                </div>
-                
-                <!-- 最近偵測 -->
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title mb-3"><i class="bi bi-clock-history"></i> 最近偵測</h5>
-                        <div id="recentDetections" class="list-group list-group-flush">
-                            <div class="text-center text-muted py-3">
-                                尚無偵測記錄
+                        
+                        <!-- 吸菸行為警示框 -->
+                        <div id="smokingAlertBox" class="stats-box" style="background: linear-gradient(135deg, #fff5f5 0%, #ffe5e5 100%); border: 2px solid #dc3545; display: none;">
+                            <div class="d-flex align-items-center justify-content-center mb-2">
+                                <i class="bi bi-exclamation-triangle-fill text-danger" style="font-size: 2.5rem;"></i>
                             </div>
+                            <h5 class="text-danger mb-2" style="font-weight: bold;">⚠️ 偵測到吸菸行為</h5>
+                            <p class="mb-1 text-muted" style="font-size: 0.9em;">最後偵測時間</p>
+                            <h6 id="lastDetectionTime" class="text-danger mb-0" style="font-weight: bold;">--:--:--</h6>
                         </div>
                     </div>
                 </div>
@@ -142,575 +140,6 @@
         </div>
     </div>
 
-    <!-- <script>
-        const API_URL = 'http://localhost:8000';
-        const WS_URL = 'ws://localhost:8000';
-        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-        
-        if (!token) {
-            window.location.href = 'login.html';
-        }
-        
-        let selectedCamera = null;
-        let websocket = null;
-        let isMonitoring = false;
-        let frameCount = 0;
-        let detectionCount = 0;
-        let totalConfidence = 0;
-        let fpsInterval;
-        let latestDetection = null;
-        let videoStream = null;
-        
-        // 載入攝影機列表
-        async function loadCameras() {
-            try {
-                const response = await fetch(`${API_URL}/api/cameras`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                
-                const cameras = await response.json();
-                displayCameras(cameras);
-            } catch (error) {
-                console.error('Error:', error);
-            }
-        }
-        
-        function displayCameras(cameras) {
-            const container = document.getElementById('cameraSelector');
-            
-            if (cameras.length === 0) {
-                container.innerHTML = `
-                    <div class="col-12 text-center">
-                        <p class="text-muted">沒有可用的攝影機</p>
-                        <a href="cameras.html" class="btn btn-primary">
-                            <i class="bi bi-plus-circle"></i> 新增攝影機
-                        </a>
-                    </div>
-                `;
-                return;
-            }
-            
-            container.innerHTML = cameras.map(camera => `
-                <div class="col-md-6 col-lg-4">
-                    <div class="card camera-select-card" onclick="selectCamera(${camera.id}, '${camera.camera_name}', '${camera.api_key}')">
-                        <div class="card-body">
-                            <h6 class="card-title">
-                                <i class="bi bi-camera"></i> ${camera.camera_name}
-                            </h6>
-                            <p class="card-text mb-2">
-                                <small class="text-muted">
-                                    <i class="bi bi-tag"></i> ${camera.camera_type.toUpperCase()}<br>
-                                    <i class="bi bi-geo-alt"></i> ${camera.location || '未設定'}
-                                </small>
-                            </p>
-                            <span class="badge ${camera.is_online ? 'bg-success' : 'bg-secondary'}">
-                                ${camera.is_online ? '線上' : '離線'}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        }
-        
-        function selectCamera(id, name, apiKey) {
-            document.querySelectorAll('.camera-select-card').forEach(card => {
-                card.classList.remove('selected');
-            });
-            
-            event.currentTarget.classList.add('selected');
-            
-            selectedCamera = { id, name, apiKey };
-            document.getElementById('startBtn').disabled = false;
-            
-            console.log('已選擇攝影機:', name);
-        }
-        
-        async function startMonitoring() {
-            if (!selectedCamera) {
-                alert('請先選擇攝影機');
-                return;
-            }
-            
-            if (isMonitoring) {
-                alert("監測中");
-                return;
-
-            }
-            
-            try {
-                const wsUrl = `${WS_URL}/ws/upload/${selectedCamera.apiKey}`;
-                websocket = new WebSocket(wsUrl);
-                
-                websocket.onopen = () => {
-                    console.log('✅ WebSocket 已連線');
-                    isMonitoring = true;
-                    updateStatus('online');
-                    document.getElementById('startBtn').disabled = true;
-                    document.getElementById('stopBtn').disabled = false;
-                    document.getElementById('videoPlaceholder').style.display = 'none';
-                    document.getElementById('displayCanvas').style.display = 'block';
-                    startFpsCounter();
-                };
-
-
-                websocket.onmessage = async (event) => {
-                    console.log('📨 收到原始訊息');
-                    
-                    let data;
-                    try {
-                        data = JSON.parse(event.data); //透過 JSON.parse()，變成可以用 obj.name 直接存取的 JS 物件。
-                        console.log('✅ JSON 解析成功:', data);
-                    } catch (error) {
-                        console.error('❌ JSON 解析失敗:', error);
-                        console.error('原始資料:', event.data);
-                        return; // 直接返回,不處理
-                    }
-                    
-                    console.log('🔍 收到偵測結果:', data);
-                    
-                    try {
-                        handleServerMessage(data);
-                        console.log('✅ handleServerMessage 完成');
-                    } catch (error) {
-                        console.error('❌ handleServerMessage 錯誤:', error);
-                        console.trace();
-                        // 不要讓錯誤傳播
-                    }
-                };
-                
-                websocket.onerror = (error) => {
-                    console.error('❌ WebSocket 錯誤:', error);
-
-                };
-                
-                websocket.onclose = () => {
-                    console.log('⚠️ WebSocket 已斷線');
-                    
-                    if (isMonitoring) {
-                        // 不要自動停止,保持監控狀態
-                        console.log('連線中斷,嘗試維持本地顯示');
-                        
-                    }
-                };
-                
-                await startVideoCapture();
-                
-            } catch (error) {
-                console.error('啟動監控失敗:', error);
-                alert('啟動監控失敗');
-            }
-        }
-        
-
-        async function startVideoCapture() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { width: 640, height: 480 } 
-                });
-                
-                videoStream = stream;
-                const video = document.createElement('video');
-                video.srcObject = stream;
-                video.play();
-                
-                const captureCanvas = document.createElement('canvas');
-                captureCanvas.width = 640;
-                captureCanvas.height = 480;
-                const captureCtx = captureCanvas.getContext('2d');
-                
-                const displayCanvas = document.getElementById('displayCanvas');
-                displayCanvas.width = 640;
-                displayCanvas.height = 480;
-                const displayCtx = displayCanvas.getContext('2d');  
-                
-                // ✅ 加入處理中標記,避免並發問題
-                let isProcessing = false;
-                let skippedFrames = 0;
-                
-                const captureInterval = setInterval(() => {
-                    if (!isMonitoring) {
-                        clearInterval(captureInterval);
-                        stream.getTracks().forEach(track => track.stop());
-                        console.log('📷 攝影機已停止');
-                        return;
-                    }
-                    
-                    // ✅ 如果還在處理上一幀,跳過這次
-                    if (isProcessing) {
-                        skippedFrames++;
-                        if (skippedFrames % 10 === 0) {
-                            console.log(`⏭️ 已跳過 ${skippedFrames} 幀 (處理速度較慢)`);
-                        }
-                        return;
-                    }
-                    
-                    isProcessing = true;
-                    
-                    try {
-                        // 繪製影像到顯示 canvas
-                        displayCtx.drawImage(video, 0, 0, 640, 480);
-                        
-                        // 繪製 bounding boxes
-                        if (latestDetection && latestDetection.boxes) {
-                            try {
-                                drawBoundingBoxes(displayCtx, latestDetection.boxes);
-                            } catch (error) {
-                                console.error('❌ drawBoundingBoxes 錯誤:', error);
-                            }
-                        }
-                        
-                        // 發送到伺服器
-                        captureCtx.drawImage(video, 0, 0, 640, 480);
-                        
-                        captureCanvas.toBlob((blob) => {
-                            if (!blob) {
-                                console.error('❌ toBlob 失敗');
-                                isProcessing = false;
-                                return;
-                            }
-                            
-                            const reader = new FileReader();
-                            
-                            reader.onerror = () => {
-                                console.error('❌ FileReader 錯誤');
-                                isProcessing = false;
-                            };
-                            
-                            reader.onloadend = () => {
-                                try {
-                                    const base64data = reader.result.split(',')[1];
-                                    
-                                    if (websocket && websocket.readyState === WebSocket.OPEN) {
-                                        websocket.send(JSON.stringify({
-                                            type: "frame",
-                                            data: base64data,
-                                            timestamp: new Date().toISOString()
-                                        }));
-                                        
-                                        frameCount++;
-                                        const countEl = document.getElementById('frameCount');
-                                        if (countEl) {
-                                            countEl.textContent = frameCount;
-                                        }
-                                        
-                                        // 重置跳過計數
-                                        if (skippedFrames > 0) {
-                                            skippedFrames = 0;
-                                        }
-                                    } else {
-                                        console.warn('⚠️ WebSocket 未連線,跳過發送');
-                                    }
-                                } catch (error) {
-                                    console.error('❌ 發送幀錯誤:', error);
-                                } finally {
-                                    // ✅ 確保解鎖
-                                    isProcessing = false;
-                                }
-                            };
-                            
-                            reader.readAsDataURL(blob);
-                        }, 'image/jpeg', 0.8);
-                        
-                    } catch (error) {
-                        console.error('❌ 捕捉幀錯誤:', error);
-                        isProcessing = false;
-                    }
-                    
-                }, 100); // 每 100ms 一次 (最多 10 FPS)
-                
-            } catch (error) {
-                console.error('❌ 無法存取攝影機:', error);
-                alert('無法存取攝影機,請確認權限設定');
-                stopMonitoring();
-            }
-        }       
-
-           
-        function drawBoundingBoxes(ctx, boxes) {
-            boxes.forEach(box => {
-                const { x1, y1, x2, y2, confidence, label } = box;
-                
-                // 設定顏色 (人=綠色, 香菸=紅色)
-                const color = label === 'person' ? '#00ff00' : '#ff0000';
-                
-                // 繪製框
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 3;
-                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-                
-                // 繪製標籤背景
-                ctx.fillStyle = color;
-                const text = `${label} ${(confidence * 100).toFixed(0)}%`;
-                const textWidth = ctx.measureText(text).width;
-                ctx.fillRect(x1, y1 - 25, textWidth + 10, 25);
-                
-                // 繪製標籤文字
-                ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 16px Arial';
-                ctx.fillText(text, x1 + 5, y1 - 7);
-            });
-        }
-         
-        
-        
-        function handleServerMessage(data) {
-            console.log('📨 收到訊息:', data.type);
-            
-            try {
-                const detectionData = data.data || data;
-                
-                if (detectionData.boxes) {
-                    latestDetection = detectionData;
-                }
-                
-                // ✅ 直接檢查 is_smoking (不需要檢查 type === 'alert')
-                if (detectionData.is_smoking === true) {
-                    console.log('⚠️ 偵測到吸菸!');
-                    detectionCount++;
-                    document.getElementById('detectionCount').textContent = detectionCount;
-                }
-                
-                // 更新信心度
-                // if (detectionData.max_confidence !== undefined) {
-                //     totalConfidence += detectionData.max_confidence;
-                //     const avgConf = (totalConfidence / frameCount * 100).toFixed(1);
-                //     document.getElementById('avgConfidence').textContent = avgConf + '%';
-                // }
-                const alpha = 0.2; // 平滑係數 0~1
-                if (detectionData.max_confidence !== undefined) {
-                    const confPercent = detectionData.max_confidence * 100;
-                    avgConfidence = avgConfidence ? (alpha * confPercent + (1-alpha) * avgConfidence) : confPercent;
-                    document.getElementById('avgConfidence').textContent = avgConfidence.toFixed(1) + '%';
-                }
-
-                
-            } catch (error) {
-                console.error('❌ 錯誤:', error);
-            }
-        }
-                
-        function addRecentDetection(data) {
-            try {
-                const container = document.getElementById('recentDetections');
-                if (!container) {
-                    console.error('找不到 recentDetections 元素');
-                    return;
-                }
-                
-                if (container.querySelector('.text-center')) {
-                    container.innerHTML = '';
-                }
-                
-                const item = document.createElement('div');
-                item.className = 'list-group-item';
-                const confidence = data.max_confidence || data.confidence || 0;
-                item.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <i class="bi bi-exclamation-triangle text-danger"></i>
-                            <strong>吸菸偵測</strong><br>
-                            <small class="text-muted">${new Date().toLocaleTimeString('zh-TW')}</small>
-                        </div>
-                        <span class="badge bg-danger">${(confidence * 100).toFixed(1)}%</span>
-                    </div>
-                `;
-                
-                container.prepend(item);
-                
-                while (container.children.length > 10) {
-                    container.removeChild(container.lastChild);
-                }
-            } catch (error) {
-                console.error('❌ addRecentDetection 錯誤:', error);
-            }
-        }
-
-        function stopMonitoring() {
-            isMonitoring = false;
-            
-            if (websocket) {
-                websocket.close();
-                websocket = null;
-            }
-            
-            if (videoStream) {
-                videoStream.getTracks().forEach(track => track.stop());
-                videoStream = null;
-            }
-            
-            updateStatus('offline');
-            document.getElementById('startBtn').disabled = false;
-            document.getElementById('stopBtn').disabled = true;
-            document.getElementById('videoPlaceholder').style.display = 'flex';
-            document.getElementById('displayCanvas').style.display = 'none';
-            
-            stopFpsCounter();
-            latestDetection = null;
-        }
-        
-        function updateStatus(status) {
-            const indicator = document.getElementById('statusIndicator');
-            indicator.className = 'status-indicator';
-            
-            if (status === 'online') {
-                indicator.classList.add('status-online');
-                indicator.innerHTML = '<i class="bi bi-wifi"></i> 線上';
-            } else if (status === 'connecting') {
-                indicator.classList.add('status-connecting');
-                indicator.innerHTML = '<i class="bi bi-hourglass-split"></i> 連線中';
-            } else {
-                indicator.classList.add('status-offline');
-                indicator.innerHTML = '<i class="bi bi-wifi-off"></i> 離線';
-            }
-        }
-        
-        function startFpsCounter() {
-            let lastFrame = frameCount;
-            fpsInterval = setInterval(() => {
-                const fps = frameCount - lastFrame;
-                document.getElementById('fpsCounter').textContent = `FPS: ${fps}`;
-                lastFrame = frameCount;
-            }, 1000);
-        }
-        
-        function stopFpsCounter() {
-            if (fpsInterval) {
-                clearInterval(fpsInterval);
-                document.getElementById('fpsCounter').textContent = 'FPS: 0';
-            }
-        }
-        
-        function takeScreenshot() {
-            const canvas = document.getElementById('displayCanvas');
-            if (canvas.style.display === 'block') {
-                const link = document.createElement('a');
-                link.download = `screenshot_${Date.now()}.jpg`;
-                link.href = canvas.toDataURL('image/jpeg');
-                link.click();
-            }
-        }
-        
-        function logout() {
-            stopMonitoring();
-            localStorage.clear();
-            sessionStorage.clear();
-            window.location.href = 'login.html';
-        }
-        
-         //動態導覽列
-        function toggleSidebar() {
-            const sidebar = document.querySelector('.sidebar');
-            const mainContent = document.querySelector('.main-content');
-            const toggleBtn = document.querySelector('.toggle-btn');
-
-            sidebar.classList.toggle('collapsed');
-            mainContent.classList.toggle('collapsed');
-            toggleBtn.classList.toggle('collapsed');
-        }
-        // 🔥 選擇攝影機時儲存完整資訊
-        function selectCamera(id, name, apiKey, type, source) {
-            document.querySelectorAll('.camera-select-card').forEach(card => {
-                card.classList.remove('selected');
-            });
-            
-            event.currentTarget.classList.add('selected');
-            
-            selectedCamera = { 
-                id, 
-                name, 
-                apiKey,
-                type,
-                source  // 🔥 這裡會是 deviceId
-            };
-            
-            document.getElementById('startBtn').disabled = false;
-            console.log('已選擇攝影機:', selectedCamera);
-            
-            updateSelectedCameraDisplay(name);
-        }
-
-        // 🔥 修改 startVideoCapture 使用正確的 deviceId
-        async function startVideoCapture() {
-            try {
-                let constraints;
-                
-                if (selectedCamera) {
-                    const { type, source } = selectedCamera;
-                    
-                    if (type === 'rtsp') {
-                        alert('RTSP 串流需要使用後端處理\n請執行: camera_client.py');
-                        stopMonitoring();
-                        return;
-                    }
-                    
-                    // 🔥 使用儲存的 deviceId
-                    if (type === 'local' || type === 'usb') {
-                        console.log('🎥 使用攝影機 deviceId:', source);
-                        
-                        constraints = {
-                            video: {
-                                deviceId: { exact: source },  // 使用精確的 deviceId
-                                width: { ideal: 640 },
-                                height: { ideal: 480 }
-                            }
-                        };
-                    }
-                } else {
-                    // 沒有選擇攝影機，使用預設
-                    constraints = {
-                        video: {
-                            width: { ideal: 640 },
-                            height: { ideal: 480 }
-                        }
-                    };
-                }
-                
-                console.log('📹 攝影機參數:', constraints);
-                
-                // 啟動攝影機
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                
-                // 顯示實際使用的攝影機
-                const track = stream.getVideoTracks()[0];
-                const settings = track.getSettings();
-                console.log('✅ 已啟動攝影機:', track.label);
-                console.log('   Device ID:', settings.deviceId);
-                console.log('   解析度:', settings.width, 'x', settings.height);
-                
-                showNotification(`已啟動: ${track.label}`, 'success');
-                
-                // ... 其餘程式碼保持不變 ...
-                
-            } catch (error) {
-                console.error('❌ 無法存取攝影機:', error);
-                
-                let errorMsg = '無法存取攝影機\n\n';
-                
-                if (error.name === 'NotAllowedError') {
-                    errorMsg += '原因：權限被拒絕';
-                } else if (error.name === 'NotFoundError') {
-                    errorMsg += '原因：找不到攝影機';
-                } else if (error.name === 'OverconstrainedError') {
-                    errorMsg += '原因：指定的攝影機不可用\n可能該裝置已被移除或正被其他程式使用';
-                } else {
-                    errorMsg += '錯誤: ' + error.message;
-                }
-                
-                alert(errorMsg);
-                stopMonitoring();
-            }
-        }
-        // 初始載入
-        loadCameras();
-        
-        window.addEventListener('beforeunload', (e) => {
-        if (isMonitoring) {
-            // 只是記錄,不要停止監控
-            console.log('⚠️ 頁面即將關閉');
-            // 不要呼叫 stopMonitoring()
-            }
-        });
-    </script> -->
     <script>
     const API_URL = 'http://localhost:8000';
     const WS_URL = 'ws://localhost:8000';
@@ -731,130 +160,103 @@
     let videoStream = null;
     
     async function loadCameras() {
-    try {
-        const response = await fetch(`${API_URL}/api/cameras`, {
-            headers: { 
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
+        try {
+            const response = await fetch(`${API_URL}/api/cameras`, {
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (response.status === 401) {
+                alert('登入已過期，請重新登入');
+                localStorage.clear();
+                sessionStorage.clear();
+                window.location.href = 'login.html';
+                return;
             }
-        });
-        
-        // 🔥 加這段：處理 401
-        if (response.status === 401) {
-            alert('登入已過期，請重新登入');
-            localStorage.clear();
-            sessionStorage.clear();
-            window.location.href = 'login.html';
-            return;
-        }
-        
-        const cameras = await response.json();
-        
-        // 🔥 加這段：檢查是否為陣列
-        if (!Array.isArray(cameras)) {
-            console.error('API 回傳格式錯誤:', cameras);
+            
+            const cameras = await response.json();
+            
+            if (!Array.isArray(cameras)) {
+                console.error('API 回傳格式錯誤:', cameras);
+                displayCameras([]);
+                return;
+            }
+            
+            displayCameras(cameras);
+        } catch (error) {
+            console.error('Error:', error);
             displayCameras([]);
+        }
+    }
+    
+    function displayCameras(cameras) {
+        const container = document.getElementById('cameraSelector');
+        
+        if (cameras.length === 0) {
+            container.innerHTML = `
+                <div class="col-12 text-center">
+                    <p class="text-muted">沒有可用的攝影機</p>
+                    <a href="cameras.html" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> 新增攝影機
+                    </a>
+                </div>
+            `;
             return;
         }
         
-        displayCameras(cameras);
-    } catch (error) {
-        console.error('Error:', error);
-        displayCameras([]); // 🔥 加這行：錯誤時顯示空列表
-    }
-}
-    
-function displayCameras(cameras) {
-    const container = document.getElementById('cameraSelector');
-    
-    if (cameras.length === 0) {
-        container.innerHTML = `
-            <div class="col-12 text-center">
-                <p class="text-muted">沒有可用的攝影機</p>
-                <a href="cameras.html" class="btn btn-primary">
-                    <i class="bi bi-plus-circle"></i> 新增攝影機
-                </a>
-            </div>
-        `;
-        return;
-    }
-    
-    container.innerHTML = cameras.map(camera => `
-        <div class="col-md-6 col-lg-4">
-            <div class="card camera-select-card" 
-                 data-camera-id="${camera.id}"
-                 data-camera-name="${camera.camera_name}"
-                 data-camera-apikey="${camera.api_key}"
-                 data-camera-type="${camera.camera_type}"
-                 data-camera-source='${camera.camera_source.replace(/'/g, "&apos;")}'
-                 onclick="selectCameraById(${camera.id})">
-                <div class="card-body">
-                    <h6 class="card-title">
-                        <i class="bi bi-camera"></i> ${camera.camera_name}
-                    </h6>
-                    <p class="card-text mb-2">
-                        <small class="text-muted">
-                            <i class="bi bi-tag"></i> ${camera.camera_type.toUpperCase()}<br>
-                            <i class="bi bi-geo-alt"></i> ${camera.location || '未設定'}
-                        </small>
-                    </p>
-                    <span class="badge ${camera.is_online ? 'bg-success' : 'bg-secondary'}">
-                        <i class="bi bi-${camera.is_online ? 'wifi' : 'wifi-off'}"></i>
-                        ${camera.is_online ? '線上' : '離線'}
-                    </span>
+        container.innerHTML = cameras.map(camera => `
+            <div class="col-md-6 col-lg-4">
+                <div class="card camera-select-card" 
+                     data-camera-id="${camera.id}"
+                     data-camera-name="${camera.camera_name}"
+                     data-camera-apikey="${camera.api_key}"
+                     data-camera-type="${camera.camera_type}"
+                     data-camera-source='${camera.camera_source.replace(/'/g, "&apos;")}'
+                     onclick="selectCameraById(${camera.id})">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <i class="bi bi-camera"></i> ${camera.camera_name}
+                        </h6>
+                        <p class="card-text mb-2">
+                            <small class="text-muted">
+                                <i class="bi bi-tag"></i> ${camera.camera_type.toUpperCase()}<br>
+                                <i class="bi bi-geo-alt"></i> ${camera.location || '未設定'}
+                            </small>
+                        </p>
+                        <span class="badge ${camera.is_online ? 'bg-success' : 'bg-secondary'}">
+                            <i class="bi bi-${camera.is_online ? 'wifi' : 'wifi-off'}"></i>
+                            ${camera.is_online ? '線上' : '離線'}
+                        </span>
+                    </div>
                 </div>
             </div>
-        </div>
-    `).join('');
-}
+        `).join('');
+    }
 
-// 🔥 新增這個函數：從 data 屬性讀取資料
-function selectCameraById(id) {
-    const card = event.currentTarget;
-    
-    document.querySelectorAll('.camera-select-card').forEach(c => {
-        c.classList.remove('selected');
-    });
-    
-    card.classList.add('selected');
-    
-    const name = card.getAttribute('data-camera-name');
-    const apiKey = card.getAttribute('data-camera-apikey');
-    const type = card.getAttribute('data-camera-type');
-    const source = card.getAttribute('data-camera-source');
-    
-    selectedCamera = { id, name, apiKey, type, source };
-    
-    document.getElementById('startBtn').disabled = false;
-    console.log('已選擇攝影機:', selectedCamera);
-    
-    updateSelectedCameraDisplay(name, type);
-}
-    
-    // 🔥 選擇攝影機
-    function selectCamera(id, name, apiKey, type, source) {
-        document.querySelectorAll('.camera-select-card').forEach(card => {
-            card.classList.remove('selected');
+    function selectCameraById(id) {
+        const card = event.currentTarget;
+        
+        document.querySelectorAll('.camera-select-card').forEach(c => {
+            c.classList.remove('selected');
         });
         
-        event.currentTarget.classList.add('selected');
+        card.classList.add('selected');
         
-        selectedCamera = { 
-            id, 
-            name, 
-            apiKey,
-            type,
-            source
-        };
+        const name = card.getAttribute('data-camera-name');
+        const apiKey = card.getAttribute('data-camera-apikey');
+        const type = card.getAttribute('data-camera-type');
+        const source = card.getAttribute('data-camera-source');
+        
+        selectedCamera = { id, name, apiKey, type, source };
         
         document.getElementById('startBtn').disabled = false;
         console.log('已選擇攝影機:', selectedCamera);
         
-        // 🔥 呼叫顯示函數
         updateSelectedCameraDisplay(name, type);
     }
     
-    // 🔥 顯示選中的攝影機資訊
     function updateSelectedCameraDisplay(name, type) {
         const placeholder = document.getElementById('videoPlaceholder');
         if (placeholder && placeholder.style.display !== 'none') {
@@ -867,7 +269,6 @@ function selectCameraById(id) {
         }
     }
     
-    // 🔥 開始監控
     async function startMonitoring() {
         if (!selectedCamera) {
             alert('請先選擇攝影機');
@@ -912,7 +313,6 @@ function selectCameraById(id) {
                 console.log('⚠️ WebSocket 已斷線');
             };
             
-            // 🔥 啟動攝影機
             await startVideoCapture();
             
         } catch (error) {
@@ -922,95 +322,93 @@ function selectCameraById(id) {
         }
     }
     
-    // 🔥 啟動攝影機捕捉
     async function startVideoCapture() {
-    try {
-        let constraints;
-        
-        if (selectedCamera) {
-            const { type, source } = selectedCamera;
+        try {
+            let constraints;
             
-            console.log('🎥 攝影機類型:', type);
-            console.log('🎥 攝影機來源:', source);
-            
-            if (type === 'rtsp') {
-                alert('RTSP 串流需要使用後端處理');
-                stopMonitoring();
-                return;
-            }
-            
-            // 🔥 本地或 USB 攝影機
-            if (type === 'local' || type === 'usb') {
-                // 🔥 先掃描當前可用裝置
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const videoDevices = devices.filter(d => d.kind === 'videoinput');
+            if (selectedCamera) {
+                const { type, source } = selectedCamera;
                 
-                console.log('📹 當前可用攝影機:', videoDevices.map(d => d.label));
+                console.log('🎥 攝影機類型:', type);
+                console.log('🎥 攝影機來源:', source);
                 
-                let targetDeviceId = null;
+                if (type === 'rtsp') {
+                    alert('RTSP 串流需要使用後端處理');
+                    stopMonitoring();
+                    return;
+                }
                 
-                // 🔥 嘗試解析 source
-                try {
-                    const cameraInfo = JSON.parse(source);
-                    const savedLabel = cameraInfo.label;
-                    const savedDeviceId = cameraInfo.deviceId;
+                if (type === 'local' || type === 'usb') {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const videoDevices = devices.filter(d => d.kind === 'videoinput');
                     
-                    console.log('🔍 尋找攝影機:', savedLabel);
+                    console.log('📹 當前可用攝影機:', videoDevices.map(d => d.label));
                     
-                    // 🔥 優先用 label 比對
-                    const matchedByLabel = videoDevices.find(d => d.label === savedLabel);
-                    if (matchedByLabel) {
-                        targetDeviceId = matchedByLabel.deviceId;
-                        console.log('✅ 透過標籤找到:', matchedByLabel.label);
-                    } else {
-                        // 🔥 再試 deviceId
-                        const matchedById = videoDevices.find(d => d.deviceId === savedDeviceId);
-                        if (matchedById) {
-                            targetDeviceId = matchedById.deviceId;
-                            console.log('✅ 透過 ID 找到:', matchedById.label);
+                    let targetDeviceId = null;
+                    
+                    try {
+                        const cameraInfo = JSON.parse(source);
+                        const savedLabel = cameraInfo.label;
+                        const savedDeviceId = cameraInfo.deviceId;
+                        
+                        console.log('🔍 尋找攝影機:', savedLabel);
+                        
+                        const matchedByLabel = videoDevices.find(d => d.label === savedLabel);
+                        if (matchedByLabel) {
+                            targetDeviceId = matchedByLabel.deviceId;
+                            console.log('✅ 透過標籤找到:', matchedByLabel.label);
+                        } else {
+                            const matchedById = videoDevices.find(d => d.deviceId === savedDeviceId);
+                            if (matchedById) {
+                                targetDeviceId = matchedById.deviceId;
+                                console.log('✅ 透過 ID 找到:', matchedById.label);
+                            }
+                        }
+                        
+                    } catch (e) {
+                        console.log('⚠️ 舊格式 source，直接使用');
+                        targetDeviceId = source;
+                    }
+                    
+                    if (!targetDeviceId) {
+                        const retry = confirm(
+                            '找不到指定的攝影機裝置！\n\n' +
+                            '可能原因：\n' +
+                            '1. 裝置已被移除\n' +
+                            '2. 裝置正被其他程式使用\n' +
+                            '3. 裝置名稱已變更\n\n' +
+                            '是否使用預設攝影機？'
+                        );
+                        
+                        if (!retry) {
+                            stopMonitoring();
+                            return;
+                        }
+                        
+                        if (videoDevices.length > 0) {
+                            targetDeviceId = videoDevices[0].deviceId;
+                            console.log('⚠️ 使用預設攝影機:', videoDevices[0].label);
+                        } else {
+                            throw new Error('沒有可用的攝影機裝置');
                         }
                     }
                     
-                } catch (e) {
-                    // 🔥 如果不是 JSON，可能是舊格式的 deviceId
-                    console.log('⚠️ 舊格式 source，直接使用');
-                    targetDeviceId = source;
+                    constraints = {
+                        video: {
+                            deviceId: { exact: targetDeviceId },
+                            width: { ideal: 640 },
+                            height: { ideal: 480 }
+                        }
+                    };
+                } else {
+                    constraints = {
+                        video: {
+                            width: { ideal: 640 },
+                            height: { ideal: 480 }
+                        }
+                    };
                 }
-                
-                // 🔥 檢查是否找到
-                if (!targetDeviceId) {
-                    const retry = confirm(
-                        '找不到指定的攝影機裝置！\n\n' +
-                        '可能原因：\n' +
-                        '1. 裝置已被移除\n' +
-                        '2. 裝置正被其他程式使用\n' +
-                        '3. 裝置名稱已變更\n\n' +
-                        '是否使用預設攝影機？'
-                    );
-                    
-                    if (!retry) {
-                        stopMonitoring();
-                        return;
-                    }
-                    
-                    // 使用第一個可用攝影機
-                    if (videoDevices.length > 0) {
-                        targetDeviceId = videoDevices[0].deviceId;
-                        console.log('⚠️ 使用預設攝影機:', videoDevices[0].label);
-                    } else {
-                        throw new Error('沒有可用的攝影機裝置');
-                    }
-                }
-                
-                constraints = {
-                    video: {
-                        deviceId: { exact: targetDeviceId },
-                        width: { ideal: 640 },
-                        height: { ideal: 480 }
-                    }
-                };
             } else {
-                // 未知類型
                 constraints = {
                     video: {
                         width: { ideal: 640 },
@@ -1018,33 +416,21 @@ function selectCameraById(id) {
                     }
                 };
             }
-        } else {
-            // 沒有選擇攝影機
-            constraints = {
-                video: {
-                    width: { ideal: 640 },
-                    height: { ideal: 480 }
-                }
-            };
-        }
-        
-        console.log('📹 攝影機參數:', constraints);
-        
-        if (!constraints || !constraints.video) {
-            throw new Error('攝影機參數設定錯誤');
-        }
-        
-        // 啟動攝影機
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        
-        const track = stream.getVideoTracks()[0];
-        const settings = track.getSettings();
-        console.log('✅ 已啟動攝影機:', track.label);
-        console.log('   Device ID:', settings.deviceId);
-        
-        showNotification(`已啟動: ${track.label}`, 'success');
-        
-        // ... 其餘程式碼不變 ...
+            
+            console.log('📹 攝影機參數:', constraints);
+            
+            if (!constraints || !constraints.video) {
+                throw new Error('攝影機參數設定錯誤');
+            }
+            
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            
+            const track = stream.getVideoTracks()[0];
+            const settings = track.getSettings();
+            console.log('✅ 已啟動攝影機:', track.label);
+            console.log('   Device ID:', settings.deviceId);
+            
+            showNotification(`已啟動: ${track.label}`, 'success');
             
             videoStream = stream;
             const video = document.createElement('video');
@@ -1083,15 +469,12 @@ function selectCameraById(id) {
                 isProcessing = true;
                 
                 try {
-                    // 顯示即時影像
                     displayCtx.drawImage(video, 0, 0, 640, 480);
                     
-                    // 繪製偵測框
                     if (latestDetection && latestDetection.boxes) {
                         drawBoundingBoxes(displayCtx, latestDetection.boxes);
                     }
                     
-                    // 發送到伺服器
                     captureCtx.drawImage(video, 0, 0, 640, 480);
                     
                     captureCanvas.toBlob((blob) => {
@@ -1142,7 +525,7 @@ function selectCameraById(id) {
                     isProcessing = false;
                 }
                 
-            }, 100); // 10 FPS
+            }, 100);
             
         } catch (error) {
             console.error('❌ 無法存取攝影機:', error);
@@ -1166,7 +549,6 @@ function selectCameraById(id) {
         }
     }
     
-    // 🔥 繪製偵測框
     function drawBoundingBoxes(ctx, boxes) {
         boxes.forEach(box => {
             const { x1, y1, x2, y2, confidence, label } = box;
@@ -1188,7 +570,6 @@ function selectCameraById(id) {
         });
     }
     
-    // 🔥 處理伺服器訊息
     function handleServerMessage(data) {
         console.log('📨 收到訊息:', data.type);
         
@@ -1204,20 +585,13 @@ function selectCameraById(id) {
                 detectionCount++;
                 document.getElementById('detectionCount').textContent = detectionCount;
                 
-                // 新增到最近偵測
-                addRecentDetection(detectionData);
+                // 🔥 更新最後偵測時間
+                updateLastDetectionTime();
                 
-                // 顯示警報
-                const alert = document.getElementById('detectionAlert');
-                if (alert) {
-                    alert.style.display = 'block';
-                    setTimeout(() => {
-                        alert.style.display = 'none';
-                    }, 3000);
-                }
+                // 🔥 顯示強化警報
+                showEnhancedAlert();
             }
             
-            // 更新信心度
             const alpha = 0.2;
             if (detectionData.max_confidence !== undefined) {
                 const confPercent = detectionData.max_confidence * 100;
@@ -1230,41 +604,25 @@ function selectCameraById(id) {
         }
     }
     
-    // 🔥 新增最近偵測記錄
-    function addRecentDetection(data) {
-        try {
-            const container = document.getElementById('recentDetections');
-            if (!container) return;
-            
-            if (container.querySelector('.text-center')) {
-                container.innerHTML = '';
-            }
-            
-            const item = document.createElement('div');
-            item.className = 'list-group-item';
-            const confidence = data.max_confidence || data.confidence || 0;
-            item.innerHTML = `
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <i class="bi bi-exclamation-triangle text-danger"></i>
-                        <strong>吸菸偵測</strong><br>
-                        <small class="text-muted">${new Date().toLocaleTimeString('zh-TW')}</small>
-                    </div>
-                    <span class="badge bg-danger">${(confidence * 100).toFixed(1)}%</span>
-                </div>
-            `;
-            
-            container.prepend(item);
-            
-            while (container.children.length > 10) {
-                container.removeChild(container.lastChild);
-            }
-        } catch (error) {
-            console.error('❌ addRecentDetection 錯誤:', error);
-        }
+    // 🔥 新增：更新最後偵測時間
+    function updateLastDetectionTime() {
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('zh-TW', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+        document.getElementById('lastDetectionTime').textContent = timeString;
     }
     
-    // 🔥 停止監控
+    // 🔥 新增：顯示警報效果(簡化版)
+    function showEnhancedAlert() {
+        const alertBox = document.getElementById('smokingAlertBox');
+        
+        // 顯示警示框
+        alertBox.style.display = 'block';
+    }
+    
     function stopMonitoring() {
         isMonitoring = false;
         
@@ -1278,6 +636,10 @@ function selectCameraById(id) {
             videoStream = null;
         }
         
+        // 隱藏警示框
+        const alertBox = document.getElementById('smokingAlertBox');
+        alertBox.style.display = 'none';
+        
         updateStatus('offline');
         document.getElementById('startBtn').disabled = false;
         document.getElementById('stopBtn').disabled = true;
@@ -1290,7 +652,6 @@ function selectCameraById(id) {
         console.log('⏹️ 監控已停止');
     }
     
-    // 🔥 更新狀態指示器
     function updateStatus(status) {
         const indicator = document.getElementById('statusIndicator');
         indicator.className = 'status-indicator';
@@ -1307,7 +668,6 @@ function selectCameraById(id) {
         }
     }
     
-    // 🔥 FPS 計數器
     function startFpsCounter() {
         let lastFrame = frameCount;
         fpsInterval = setInterval(() => {
@@ -1324,7 +684,6 @@ function selectCameraById(id) {
         }
     }
     
-    // 🔥 截圖功能
     function takeScreenshot() {
         const canvas = document.getElementById('displayCanvas');
         if (canvas.style.display === 'block') {
@@ -1337,7 +696,6 @@ function selectCameraById(id) {
         }
     }
     
-    // 🔥 通知函數
     function showNotification(message, type = 'info') {
         const alertDiv = document.createElement('div');
         alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
@@ -1353,7 +711,6 @@ function selectCameraById(id) {
         }, 3000);
     }
     
-    // 🔥 登出
     function logout() {
         stopMonitoring();
         localStorage.clear();
@@ -1361,7 +718,6 @@ function selectCameraById(id) {
         window.location.href = 'login.html';
     }
     
-    // 🔥 動態導覽列
     function toggleSidebar() {
         const sidebar = document.querySelector('.sidebar');
         const mainContent = document.querySelector('.main-content');
@@ -1372,16 +728,15 @@ function selectCameraById(id) {
         toggleBtn.classList.toggle('collapsed');
     }
     
-    // 初始載入
     loadCameras();
     
-    // 頁面關閉警告
     window.addEventListener('beforeunload', (e) => {
         if (isMonitoring) {
             console.log('⚠️ 頁面即將關閉');
         }
     });
-</script>
+    </script>
+    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
